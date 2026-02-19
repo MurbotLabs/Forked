@@ -68,11 +68,13 @@ source ~/.zshrc   # or ~/.bashrc
 
 ## Usage
 
-### 1. Start your OpenClaw gateway
+### 1. Start (or restart) your OpenClaw gateway
 
 ```bash
 openclaw gateway start
 ```
+
+> If your gateway was already running when you ran `install.sh`, restart it — the gateway reads plugin config at startup, so it needs a restart to pick up the Forked tracer.
 
 The Forked daemon starts automatically in the background as soon as the gateway loads the tracer plugin. No extra step needed.
 

@@ -56,26 +56,31 @@ cd ~/forked
 ./install.sh
 ```
 
-> **Why `~/forked`?** This is the standard install location. Everyone using Forked has the same path, which makes setup and troubleshooting consistent. You can install elsewhere if needed — the installer will warn you and still work.
+> **Why `~/forked`?** This is the standard install location. Everyone using Forked has the same path, which makes setup and troubleshooting consistent. You can install elsewhere if needed.
 
 The installer will:
 1. Install dependencies for the tracer, daemon, and UI
 2. Register the Forked tracer plugin with your OpenClaw config (`~/.openclaw/openclaw.json`)
-3. Print the exact PATH line to copy
+3. Create a symlink at `~/.local/bin/forked` (Linux) or add to `~/.zshrc` / `~/.bash_profile` (macOS) so the `forked` command is available
 
-Add the `forked` command to your PATH by pasting this into your `~/.zshrc` or `~/.bashrc`:
-
-```bash
-export PATH="$HOME/forked:$PATH"
-```
-
-Then reload your shell:
+**After install, open a new terminal** and run:
 
 ```bash
-source ~/.zshrc   # or ~/.bashrc
+forked run ui
 ```
 
 > **Re-running the installer is safe.** If you pull an update and run `./install.sh` again, it will update dependencies and re-register the plugin without touching your existing trace data.
+
+---
+
+## Updating
+
+```bash
+cd ~/forked
+forked update
+```
+
+This pulls the latest code from GitHub and re-runs the installer to update dependencies and plugin registration.
 
 ---
 
@@ -111,15 +116,31 @@ Use OpenClaw as you always would. Traces appear in the UI in real time.
 
 The main view. Shows all captured sessions in the left sidebar. Click a session to open its timeline — a chronological lane of every event that occurred during that run. Fork branches appear as indented sub-lanes.
 
+**Sidebar features:**
+- Search sessions by session key, run ID, or custom label
+- Click the pencil icon on any session card to set a custom label (stored locally)
+
+**Timeline toolbar:**
+- Sort events oldest-first or newest-first
+- **Stats bar** — shows LLM call count, tool call count, total tokens, and session duration at a glance
+- **Filter bar** — click `LLM`, `Tools`, `Messages`, or `System` to show only those event types
+- **Search** — filter events by any text in their data
+
 **Event types shown:**
 
 | Event | What it represents |
 |---|---|
 | `Session Start / End` | Agent session lifecycle |
-| `LLM Request / Response` | Every call to the model, with full prompt and usage stats |
-| `Tool Call / Result` | Every tool the agent used, with parameters and output |
+| `LLM Request` | Every call to the model — shows the actual user message, model/provider, and context size |
+| `LLM Response` | Model response text, input/output token counts |
+| `Tool Call` | Tool name and key parameters — start and end events are merged into one row |
+| `Tool Result` | Output from the tool, duration, pass/fail indicator |
+| `Message Received` | Inbound message from user (via Telegram, WhatsApp, etc.) |
+| `Message Sent` | Outbound reply to user |
 | `Config Change` | Any change detected in your OpenClaw config files |
 | `Fork` | A replayed branch of a previous run |
+
+Clicking any event expands it to show a **human-readable summary** of what happened. A **"Show raw data"** toggle reveals the full JSON for power users.
 
 ### Config tab
 
@@ -133,15 +154,16 @@ Click the **Fork** button on any event in the timeline to open the Fork modal.
 
 - The event's data is shown as editable JSON
 - If the event contains a `model` field, a **model picker** dropdown appears — populated from your configured models — so you can switch models without manually editing JSON
+- Enable **Rewind** to roll back file system state to the moment of the fork point before replaying
 - Click **Fork & Replay** to re-run the agent from that point with your changes applied
 
-The forked run appears as a new branch in the timeline, indented under the original.
+The forked run appears as a new branch in the timeline, indented under the original. The agent's response is delivered to the same channel (e.g. Telegram) as the original session.
 
 ---
 
 ## Rewinding
 
-Click the **Rewind** button (scrubber bar at the top of a timeline lane) to roll the agent's file system state back to what it was at a specific point in time. This restores any files the agent wrote or edited during the run.
+Enable the **Rewind** toggle in the Fork modal to restore the file system state to what it was at that exact point in the original run. This rolls back any files the agent wrote or edited after the fork point, so the replayed agent starts from a clean slate.
 
 ---
 
@@ -178,6 +200,30 @@ All communication is **localhost-only**. Nothing is exposed to the network.
 
 ## Troubleshooting
 
+### `forked: command not found`
+
+**Quick fix for the current terminal session:**
+```bash
+export PATH="$HOME/forked:$PATH"
+```
+
+**Permanent fix (Linux):**
+```bash
+mkdir -p ~/.local/bin
+ln -sf ~/forked/forked ~/.local/bin/forked
+```
+Then open a new terminal.
+
+**Permanent fix (macOS):** Add to `~/.zshrc`:
+```bash
+export PATH="$HOME/forked:$PATH"
+```
+Then run `source ~/.zshrc`.
+
+Re-running `./install.sh` will also fix this automatically.
+
+---
+
 ### UI shows "Offline"
 
 The daemon is not running. Make sure your OpenClaw gateway is running — the daemon starts automatically when the gateway loads. Check that the tracer is enabled:
@@ -187,6 +233,8 @@ cat ~/.openclaw/openclaw.json | grep -A5 '"forked-tracer"'
 ```
 
 Should show `"enabled": true`. If not, re-run `./install.sh`.
+
+---
 
 ### No traces appearing
 
@@ -198,9 +246,13 @@ rm -rf /var/folders/*/T/jiti /var/folders/*/T/node-jiti 2>/dev/null; true
 
 Then restart the gateway.
 
-### install.sh fails with "OpenClaw config not found"
+---
+
+### `install.sh` fails with "OpenClaw config not found"
 
 OpenClaw needs to be installed and run through initial setup before installing Forked. Run `openclaw configure` first.
+
+---
 
 ### Port conflicts
 
@@ -227,7 +279,7 @@ forked/
 ├── forked-ui/          React + Vite dashboard
 │   ├── src/
 │   └── package.json
-├── forked              CLI entrypoint (`forked run ui`)
+├── forked              CLI entrypoint (`forked run ui`, `forked update`)
 ├── install.sh          One-shot installer
 └── .gitignore
 ```

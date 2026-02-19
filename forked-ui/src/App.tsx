@@ -80,6 +80,13 @@ function App() {
           <ConfigPanel />
         )}
       </main>
+
+      {/* Disclaimer footer */}
+      <div className="shrink-0 border-t border-border-default bg-surface-1 px-4 py-1.5 flex items-center justify-center">
+        <span className="text-[8px] font-mono text-slate-800 tracking-wide text-center">
+          v1.0 — Early release. Bugs are expected. Murbot Labs takes no responsibility for any changes made to your agent setup. Use at your own risk.
+        </span>
+      </div>
     </div>
   );
 }

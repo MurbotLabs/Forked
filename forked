@@ -8,15 +8,16 @@ usage() {
   echo ""
   echo "Commands:"
   echo "  run ui    Start the Forked UI dev server"
+  echo "  update    Pull the latest version from GitHub and update dependencies"
   exit 1
 }
 
-if [[ $# -lt 2 ]]; then
+if [[ $# -lt 1 ]]; then
   usage
 fi
 
 command="$1"
-subcommand="$2"
+subcommand="${2:-}"
 
 if [[ "$command" == "run" && "$subcommand" == "ui" ]]; then
   # Soft check: warn if daemon appears down, but don't block
@@ -29,6 +30,34 @@ if [[ "$command" == "run" && "$subcommand" == "ui" ]]; then
   echo "[forked] Starting Forked UI..."
   cd "$SCRIPT_DIR/forked-ui"
   exec npm run dev
+
+elif [[ "$command" == "update" ]]; then
+  if ! command -v git &>/dev/null; then
+    echo "[forked] Error: git is required for updates but was not found in PATH."
+    exit 1
+  fi
+
+  echo "[forked] Pulling latest changes from GitHub..."
+  if ! git -C "$SCRIPT_DIR" pull; then
+    echo ""
+    echo "[forked] Update failed. If the repo is private, authenticate first:"
+    echo "         gh auth login"
+    exit 1
+  fi
+
+  echo ""
+  echo "[forked] Updating dependencies..."
+  (cd "$SCRIPT_DIR/forked-tracer" && npm install --silent 2>&1 | grep -v "^npm warn" | grep -v "^$" || true)
+  (cd "$SCRIPT_DIR/forked-daemon"  && npm install --silent 2>&1 | grep -v "^npm warn" | grep -v "^$" || true)
+  (cd "$SCRIPT_DIR/forked-ui"      && npm install --silent 2>&1 | grep -v "^npm warn" | grep -v "^$" || true)
+
+  echo ""
+  echo "[forked] Update complete!"
+  echo ""
+  echo "  Restart your OpenClaw gateway to pick up any tracer changes:"
+  echo "    openclaw gateway stop && openclaw gateway start"
+  echo ""
+
 else
   usage
 fi

@@ -44,6 +44,9 @@ export function Header({ onRefresh, isConnected = true }: Props) {
             <span className="text-[8px] text-slate-700 font-mono tracking-widest">
               v1.0 // {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
             </span>
+            <span className="text-[7px] text-slate-800 font-mono tracking-widest">
+              by Murbot Labs
+            </span>
           </div>
         </div>
 

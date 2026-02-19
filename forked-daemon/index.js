@@ -17,12 +17,23 @@ const API_PORT = 8000;
 const OPENCLAW_CONFIG_PATH = path.join(process.env.HOME ?? "", ".openclaw", "openclaw.json");
 let GATEWAY_WS_URL = "ws://127.0.0.1:18789";
 let GATEWAY_TOKEN = "";
+// Channels that are actually configured in the user's OpenClaw setup.
+// Used to validate delivery hints — prevents routing to channels that don't exist.
+const CONFIGURED_CHANNELS = new Set();
 try {
   const ocConfig = JSON.parse(readFileSync(OPENCLAW_CONFIG_PATH, "utf-8"));
   const port = ocConfig.gateway?.port ?? 18789;
   GATEWAY_WS_URL = `ws://127.0.0.1:${port}`;
   GATEWAY_TOKEN = ocConfig.gateway?.auth?.token ?? "";
+  if (ocConfig.channels && typeof ocConfig.channels === "object") {
+    for (const [name] of Object.entries(ocConfig.channels)) {
+      if (name) CONFIGURED_CHANNELS.add(name.trim().toLowerCase());
+    }
+  }
   console.log(`[Forked Daemon] Gateway: ${GATEWAY_WS_URL} (token: ${GATEWAY_TOKEN ? "found" : "none"})`);
+  if (CONFIGURED_CHANNELS.size > 0) {
+    console.log(`[Forked Daemon] Configured channels: ${[...CONFIGURED_CHANNELS].join(", ")}`);
+  }
 } catch {
   console.log("[Forked Daemon] Could not read OpenClaw config, using defaults");
 }
@@ -838,18 +849,28 @@ function matchesSessionChannel(hint, sessionChannel) {
   return hint.channel === sessionChannel;
 }
 
+// Returns true only if the channel is in the user's actual OpenClaw config.
+// Falls back to permissive (true) if we couldn't read the config.
+function isConfiguredChannel(channel) {
+  if (!channel) return false;
+  if (CONFIGURED_CHANNELS.size === 0) return true; // couldn't read config, be permissive
+  return CONFIGURED_CHANNELS.has(channel.toLowerCase());
+}
+
 function findPreferredHintFromRows(rows, sessionChannel) {
   // Prefer inbound addresses first (the user's channel), then outbound as fallback.
+  // Skip synthetic events — they are created by Forked itself and use fake addresses
+  // like "forked:user" that are not real gateway channels.
   for (let i = rows.length - 1; i >= 0; i--) {
     const parsed = safeParseJson(rows[i].data);
-    if (!parsed || parsed.type !== "message_received" || typeof parsed.from !== "string") continue;
+    if (!parsed || parsed.synthetic || parsed.type !== "message_received" || typeof parsed.from !== "string") continue;
     const hint = parseDeliveryHintFromAddress(parsed.from);
     if (matchesSessionChannel(hint, sessionChannel)) return hint;
   }
 
   for (let i = rows.length - 1; i >= 0; i--) {
     const parsed = safeParseJson(rows[i].data);
-    if (!parsed || parsed.type !== "message_sent" || typeof parsed.to !== "string") continue;
+    if (!parsed || parsed.synthetic || parsed.type !== "message_sent" || typeof parsed.to !== "string") continue;
     const hint = parseDeliveryHintFromAddress(parsed.to);
     if (matchesSessionChannel(hint, sessionChannel)) return hint;
   }
@@ -860,17 +881,23 @@ function findPreferredHintFromRows(rows, sessionChannel) {
 function deriveForkDeliveryHint({ modifiedData, history, sessionKey }) {
   const sessionChannel = parseChannelFromSessionKey(sessionKey);
 
+  // If no channel in the session key AND we have configured channels, don't guess —
+  // returning null means the gateway will route via sessionKey alone (correct for CLI runs).
+  if (!sessionChannel && CONFIGURED_CHANNELS.size > 0) return null;
+
   const fromModified = extractDeliveryHintFromEventData(modifiedData);
-  if (matchesSessionChannel(fromModified, sessionChannel)) return fromModified;
+  if (fromModified && isConfiguredChannel(fromModified.channel) && matchesSessionChannel(fromModified, sessionChannel)) {
+    return fromModified;
+  }
 
   const fromHistory = findPreferredHintFromRows(history, sessionChannel);
-  if (fromHistory) return fromHistory;
+  if (fromHistory && isConfiguredChannel(fromHistory.channel)) return fromHistory;
 
   // Fallback: look across the full session timeline for the most recent target.
   if (sessionKey) {
     const rows = getRecentLifecycleEventsForSessionStmt.all(sessionKey);
     const fromSession = findPreferredHintFromRows(rows, sessionChannel);
-    if (fromSession) return fromSession;
+    if (fromSession && isConfiguredChannel(fromSession.channel)) return fromSession;
   }
 
   return null;

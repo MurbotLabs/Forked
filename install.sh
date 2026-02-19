@@ -133,8 +133,13 @@ for RC_FILE in "${RC_FILES[@]}"; do
   fi
 done
 
-# Source the first rc file immediately so PATH works in this session
-export PATH="$FORKED_DIR:$PATH"
+# ── Symlink into ~/.local/bin (already in PATH on modern Linux — no source needed) ──
+
+if [[ "$(uname)" != "Darwin" ]]; then
+  mkdir -p "$HOME/.local/bin"
+  ln -sf "$FORKED_DIR/forked" "$HOME/.local/bin/forked"
+  echo "  [ok] Symlinked forked -> ~/.local/bin/forked"
+fi
 
 # ── Restart gateway if already running ────────────────────────────────────────
 
@@ -152,16 +157,17 @@ fi
 # ── Done ──────────────────────────────────────────────────────────────────────
 
 echo ""
-echo "  ✓ Forked installed successfully!"
-echo ""
-echo "  ─────────────────────────────────────────────────"
-echo "  PATH is active in this session. For future"
-echo "  sessions, open a new terminal or run:"
-echo ""
-echo "      source ${RC_FILES[0]}"
-echo ""
-echo "  Then start the UI:"
-echo ""
-echo "      forked run ui"
-echo "  ─────────────────────────────────────────────────"
+  echo "  ✓ Forked installed successfully!"
+  echo ""
+  echo "  ─────────────────────────────────────────────────"
+  if [[ "$(uname)" != "Darwin" ]]; then
+    echo "  Open a new terminal (or run: source ~/.bashrc)"
+    echo "  then start the UI:"
+  else
+    echo "  Open a new terminal (or run: source ${RC_FILES[0]})"
+    echo "  then start the UI:"
+  fi
+  echo ""
+  echo "      forked run ui"
+  echo "  ─────────────────────────────────────────────────"
 echo ""

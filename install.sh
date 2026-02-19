@@ -50,7 +50,10 @@ install_deps() {
   local dir="$1"
   local name="$2"
   echo "  [+] Installing $name dependencies..."
-  (cd "$dir" && npm install --silent 2>&1 | grep -v "^npm warn" | grep -v "^$" || true)
+  if ! (cd "$dir" && npm install 2>&1 | grep -v "^npm warn" | grep -v "^$"); then
+    echo "  [error] npm install failed for $name — see output above"
+    exit 1
+  fi
   echo "  [ok] $name ready"
 }
 

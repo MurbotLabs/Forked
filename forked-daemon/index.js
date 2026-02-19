@@ -881,9 +881,11 @@ function findPreferredHintFromRows(rows, sessionChannel) {
 function deriveForkDeliveryHint({ modifiedData, history, sessionKey }) {
   const sessionChannel = parseChannelFromSessionKey(sessionKey);
 
-  // If no channel in the session key AND we have configured channels, don't guess —
-  // returning null means the gateway will route via sessionKey alone (correct for CLI runs).
-  if (!sessionChannel && CONFIGURED_CHANNELS.size > 0) return null;
+  // Note: do NOT bail out early when sessionChannel is null.
+  // The session_key stored by the tracer is typically the bare UUID (e.g. 4a6d395a-...)
+  // without the "agent:channel:" prefix the gateway uses internally. We still need to
+  // search the event history for a configured-channel address so we can explicitly
+  // override the gateway's own session-channel association (which may be stale/wrong).
 
   const fromModified = extractDeliveryHintFromEventData(modifiedData);
   if (fromModified && isConfiguredChannel(fromModified.channel) && matchesSessionChannel(fromModified, sessionChannel)) {
@@ -1138,6 +1140,14 @@ function sendToGateway(message, sessionKey, deliveryHint = null) {
               agentId,
               sessionKey: sessionKey || undefined,
               deliver: true,
+              // Explicitly override the gateway's session channel association if we
+              // found a validated configured-channel address (e.g. telegram). This
+              // prevents the gateway from routing to a stale/wrong channel (e.g. whatsapp).
+              ...(deliveryHint && deliveryHint.channel && deliveryHint.to ? {
+                replyChannel: deliveryHint.channel,
+                replyTo: deliveryHint.to,
+                ...(deliveryHint.threadId ? { threadId: deliveryHint.threadId } : {}),
+              } : {}),
               idempotencyKey: agentReqId,
               timeout: 120,
             },

@@ -21,6 +21,7 @@ import { DataInspector } from "./DataInspector";
 
 type Props = {
   event: TraceEvent;
+  pairedEndEvent?: TraceEvent | null;
   hasFileSnapshot: boolean;
   isErrorEvent: boolean;
   onFork: () => void;
@@ -157,7 +158,7 @@ function shortenModel(model: string): string {
 
 const FORKABLE_TYPES = new Set(["llm_input", "message_received", "tool_call_start", "config_change", "setup_file_change"]);
 
-export function TimelineEvent({ event, hasFileSnapshot, isErrorEvent, onFork, onRewind }: Props) {
+export function TimelineEvent({ event, pairedEndEvent, hasFileSnapshot, isErrorEvent, onFork, onRewind }: Props) {
   const [expanded, setExpanded] = useState(false);
 
   let parsed: ParsedEventData;
@@ -167,15 +168,28 @@ export function TimelineEvent({ event, hasFileSnapshot, isErrorEvent, onFork, on
     parsed = { raw: event.data } as unknown as ParsedEventData;
   }
 
+  // Merged tool call (start + end paired)
+  const isMerged = pairedEndEvent != null && parsed.type === "tool_call_start";
+  let endParsed: ParsedEventData | null = null;
+  if (isMerged && pairedEndEvent) {
+    try { endParsed = JSON.parse(pairedEndEvent.data); } catch { /* ignore */ }
+  }
+
   const dotColor = STREAM_DOT_COLORS[event.stream] ?? "bg-slate-600";
   const config = STREAM_CONFIG[event.stream] ?? DEFAULT_STREAM_CONFIG;
   const filePath = parsed.fileSnapshot?.filePath;
   const isToolCall = parsed.type === "tool_call_start" || parsed.type === "tool_call_end";
   const isFileModifying = isToolCall && FILE_MODIFYING_TOOLS.has((parsed.toolName ?? "").toLowerCase());
-  const hasError = isErrorEvent || parsed.error || parsed.success === false;
+  const hasEndError = endParsed?.error != null || endParsed?.success === false;
+  const hasError = isErrorEvent || parsed.error || parsed.success === false || hasEndError;
   const tokenUsage = getTokenUsage(parsed.usage);
   const summary = getEventSummary(parsed);
   const configModelDelta = getConfigModelDelta(parsed);
+
+  // For merged: derive status from end event
+  const durationMs = isMerged
+    ? (endParsed?.durationMs ?? parsed.durationMs)
+    : parsed.durationMs;
 
   return (
     <motion.div
@@ -187,8 +201,7 @@ export function TimelineEvent({ event, hasFileSnapshot, isErrorEvent, onFork, on
       {/* Timeline connector */}
       <div className="flex flex-col items-center shrink-0 pt-1.5">
         <div
-          className={`w-2 h-2 rounded-sm shrink-0 ${hasError ? "bg-red-500" : dotColor
-            }`}
+          className={`w-2 h-2 rounded-sm shrink-0 ${hasError ? "bg-red-500" : dotColor}`}
           style={{
             boxShadow: hasError
               ? "0 0 6px rgba(239,68,68,0.5)"
@@ -217,7 +230,7 @@ export function TimelineEvent({ event, hasFileSnapshot, isErrorEvent, onFork, on
           <span className={`${config.color} opacity-60`}>
             {getEventIcon(event.stream, parsed.type as string)}
           </span>
-          <Badge stream={event.stream} eventType={parsed.type} />
+          <Badge stream={event.stream} eventType={isMerged ? "tool_call_start" : (parsed.type as string)} />
           <span className="text-[10px] font-mono text-slate-400 truncate tracking-wide">
             {getEventLabel(parsed)}
           </span>
@@ -253,8 +266,19 @@ export function TimelineEvent({ event, hasFileSnapshot, isErrorEvent, onFork, on
             </span>
           )}
 
-          {/* Tool result indicator */}
-          {parsed.type === "tool_call_end" && (
+          {/* Tool result indicator — for merged show OK/FAIL from end event */}
+          {isMerged && endParsed && (
+            <span className={`retro-badge ${hasEndError
+              ? "text-red-400 bg-red-500/10 border-red-500/30"
+              : "text-terminal-green bg-emerald-500/10 border-emerald-500/30"
+              }`}
+              style={!hasEndError ? { textShadow: '0 0 4px rgba(0,255,136,0.3)' } : undefined}>
+              {hasEndError ? "FAIL" : "OK"}
+            </span>
+          )}
+
+          {/* For non-merged tool_call_end, show OK/FAIL as before */}
+          {!isMerged && parsed.type === "tool_call_end" && (
             <span className={`retro-badge ${parsed.error
               ? "text-red-400 bg-red-500/10 border-red-500/30"
               : "text-terminal-green bg-emerald-500/10 border-emerald-500/30"
@@ -274,11 +298,11 @@ export function TimelineEvent({ event, hasFileSnapshot, isErrorEvent, onFork, on
             </span>
           )}
 
-          {typeof parsed.durationMs === "number" && (
+          {typeof durationMs === "number" && (
             <span className="text-[9px] text-slate-700 font-mono">
-              {parsed.durationMs < 1000
-                ? `${parsed.durationMs}ms`
-                : `${(parsed.durationMs / 1000).toFixed(1)}s`}
+              {durationMs < 1000
+                ? `${durationMs}ms`
+                : `${(durationMs / 1000).toFixed(1)}s`}
             </span>
           )}
 
@@ -325,10 +349,13 @@ export function TimelineEvent({ event, hasFileSnapshot, isErrorEvent, onFork, on
             {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           </span>
 
+          {/* Summary preview — expands on hover (feature 15) */}
           {summary && (
-            <span className="basis-full pl-5 text-[9px] text-slate-600 font-mono truncate">
-              {summary}
-            </span>
+            <div className="basis-full min-w-0 pl-5 overflow-hidden transition-[max-height] duration-200 ease-out max-h-[1.6em] group-hover:max-h-[5em]">
+              <span className="text-[9px] text-slate-600 font-mono break-words whitespace-pre-wrap">
+                {summary}
+              </span>
+            </div>
           )}
         </div>
 
@@ -351,6 +378,13 @@ export function TimelineEvent({ event, hasFileSnapshot, isErrorEvent, onFork, on
         {expanded && (
           <div className="px-3 pb-3 border-t border-dashed border-border-default mt-0.5 pt-2">
             <DataInspector data={parsed} />
+            {/* For merged tool calls, also show the end event */}
+            {isMerged && endParsed && (
+              <div className="mt-2 pt-2 border-t border-dashed border-border-default">
+                <div className="text-[9px] text-slate-700 font-mono uppercase tracking-widest mb-1.5">Result</div>
+                <DataInspector data={endParsed} />
+              </div>
+            )}
           </div>
         )}
       </div>

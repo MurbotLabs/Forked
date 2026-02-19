@@ -1,8 +1,20 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { Search, Layers, Terminal } from "lucide-react";
 import type { Session } from "../../lib/types";
 import { SessionCard } from "../sessions/SessionCard";
 import { EmptyState } from "../common/EmptyState";
+
+const LABELS_KEY = "forked.session.labels";
+
+function loadLabels(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem(LABELS_KEY) ?? "{}");
+  } catch { return {}; }
+}
+
+function saveLabels(labels: Record<string, string>) {
+  localStorage.setItem(LABELS_KEY, JSON.stringify(labels));
+}
 
 type Props = {
   sessions: Session[];
@@ -12,7 +24,21 @@ type Props = {
 
 export function Sidebar({ sessions, selectedSessionId, onSelect }: Props) {
   const [search, setSearch] = useState("");
+  const [labels, setLabels] = useState<Record<string, string>>(() => loadLabels());
   const normalizedSearch = search.trim().toLowerCase();
+
+  const handleLabelChange = useCallback((sessionId: string, label: string | null) => {
+    setLabels((prev) => {
+      const next = { ...prev };
+      if (label) {
+        next[sessionId] = label;
+      } else {
+        delete next[sessionId];
+      }
+      saveLabels(next);
+      return next;
+    });
+  }, []);
 
   const groupedSessions = useMemo(() => {
     const byRunId = new Map<string, Session>();
@@ -89,6 +115,7 @@ export function Sidebar({ sessions, selectedSessionId, onSelect }: Props) {
         group.sessionKey ?? "",
         group.representativeRunId,
         ...group.runIds,
+        labels[group.id] ?? "",
       ].join(" ").toLowerCase();
       return haystack.includes(normalizedSearch);
     })
@@ -144,6 +171,8 @@ export function Sidebar({ sessions, selectedSessionId, onSelect }: Props) {
                 llmOutputCount={session.llmOutputCount}
                 forkCount={session.forkCount}
                 isSelected={selectedSessionId === session.id}
+                label={labels[session.id] ?? null}
+                onLabelChange={(lbl) => handleLabelChange(session.id, lbl)}
                 onClick={() => onSelect(session.id)}
               />
             ))

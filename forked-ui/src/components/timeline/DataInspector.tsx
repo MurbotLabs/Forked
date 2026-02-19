@@ -36,6 +36,83 @@ function toRecord(value: unknown): Record<string, unknown> | null {
     ? (value as Record<string, unknown>) : null;
 }
 
+// ─── Syntax highlighter ───────────────────────────────────────────────────────
+
+type JsonTokenKind = "key" | "string" | "number" | "keyword" | "punct" | "plain";
+
+function tokenizeJson(json: string): Array<{ kind: JsonTokenKind; text: string }> {
+  const tokens: Array<{ kind: JsonTokenKind; text: string }> = [];
+  const re = /("(?:[^"\\]|\\.)*")\s*:(?!:)|("(?:[^"\\]|\\.)*")|((?:-?\d+)(?:\.\d+)?(?:[eE][+-]?\d+)?)\b|\b(true|false|null)\b|([\[\]{},])|([\s:]+)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(json)) !== null) {
+    if (match.index > lastIndex) {
+      tokens.push({ kind: "plain", text: json.slice(lastIndex, match.index) });
+    }
+    if (match[1] !== undefined) {
+      tokens.push({ kind: "key", text: match[1] });
+      const colon = match[0].slice(match[1].length);
+      if (colon) tokens.push({ kind: "plain", text: colon });
+    } else if (match[2] !== undefined) {
+      tokens.push({ kind: "string", text: match[2] });
+    } else if (match[3] !== undefined) {
+      tokens.push({ kind: "number", text: match[3] });
+    } else if (match[4] !== undefined) {
+      tokens.push({ kind: "keyword", text: match[4] });
+    } else if (match[5] !== undefined) {
+      tokens.push({ kind: "punct", text: match[5] });
+    } else if (match[6] !== undefined) {
+      tokens.push({ kind: "plain", text: match[6] });
+    }
+    lastIndex = re.lastIndex;
+  }
+  if (lastIndex < json.length) {
+    tokens.push({ kind: "plain", text: json.slice(lastIndex) });
+  }
+  return tokens;
+}
+
+const TOKEN_COLORS: Record<JsonTokenKind, string> = {
+  key: "text-terminal-amber/80",
+  string: "text-terminal-green/60",
+  number: "text-sky-400/70",
+  keyword: "text-violet-400/70",
+  punct: "text-slate-500",
+  plain: "text-slate-500",
+};
+
+function SyntaxHighlightedJson({ json }: { json: string }) {
+  const tokens = useMemo(() => tokenizeJson(json), [json]);
+  return (
+    <>
+      {tokens.map((token, i) => (
+        <span key={i} className={TOKEN_COLORS[token.kind]}>{token.text}</span>
+      ))}
+    </>
+  );
+}
+
+// ─── Copy button ─────────────────────────────────────────────────────────────
+
+function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  const handle = () => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <button
+      onClick={handle}
+      className="flex items-center gap-1 text-[9px] text-slate-600 hover:text-slate-400 transition-colors cursor-pointer font-mono tracking-wider uppercase shrink-0"
+      title="Copy to clipboard"
+    >
+      {copied ? <Check size={9} className="text-terminal-green" /> : <Copy size={9} />}
+      {copied ? "Copied" : label}
+    </button>
+  );
+}
+
 // ─── Pill / Label helpers ─────────────────────────────────────────────────────
 
 function Pill({ label, value, accent }: { label: string; value: string | number; accent?: boolean }) {
@@ -51,10 +128,21 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <div className="text-[9px] uppercase tracking-widest text-slate-600 font-mono mb-1">{children}</div>;
 }
 
+function ContentBlock({ label, children, copyText }: { label: string; children: React.ReactNode; copyText?: string }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <SectionLabel>{label}</SectionLabel>
+        {copyText !== undefined && <CopyButton text={copyText} />}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 // ─── Extract real user message from llm_input prompt ─────────────────────────
 
 function extractUserMessage(prompt: string): { meta: Record<string, string> | null; message: string } {
-  // Strip the "Conversation info (untrusted metadata):\n```json\n...\n```\n\n" prefix
   const metaMatch = prompt.match(/^Conversation info \(untrusted metadata\):\s*```json\s*([\s\S]*?)```\s*([\s\S]*)$/);
   if (metaMatch) {
     try {
@@ -83,12 +171,11 @@ function LlmInputCard({ data }: { data: Record<string, unknown> }) {
       </div>
 
       {message && (
-        <div>
-          <SectionLabel>Message</SectionLabel>
+        <ContentBlock label="Message" copyText={message}>
           <div className="bg-surface-0 border border-border-subtle rounded p-2.5 text-[11px] text-slate-300 leading-relaxed whitespace-pre-wrap break-words">
             {message}
           </div>
-        </div>
+        </ContentBlock>
       )}
 
       {meta && (
@@ -126,12 +213,11 @@ function LlmOutputCard({ data }: { data: Record<string, unknown> }) {
         AI generated a response
       </div>
       {content && (
-        <div>
-          <SectionLabel>Response</SectionLabel>
+        <ContentBlock label="Response" copyText={content}>
           <div className="bg-surface-0 border border-border-subtle rounded p-2.5 text-[11px] text-slate-300 leading-relaxed whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
             {content}
           </div>
-        </div>
+        </ContentBlock>
       )}
       <div className="flex flex-wrap gap-1.5">
         {inputTokens !== null && <Pill label="input tokens" value={inputTokens.toLocaleString()} />}
@@ -147,10 +233,11 @@ function ToolCallCard({ data }: { data: Record<string, unknown> }) {
     : typeof data.name === "string" ? data.name : "unknown tool";
   const params = toRecord(data.input) ?? toRecord(data.params) ?? toRecord(data.arguments) ?? null;
 
-  // Pick the 2-3 most useful params to highlight
   const keyParams = params
     ? Object.entries(params).slice(0, 3).filter(([, v]) => typeof v !== "object")
     : [];
+
+  const allParamsStr = params ? JSON.stringify(params, null, 2) : null;
 
   return (
     <div className="space-y-2.5">
@@ -164,8 +251,7 @@ function ToolCallCard({ data }: { data: Record<string, unknown> }) {
         </span>
       </div>
       {keyParams.length > 0 && (
-        <div>
-          <SectionLabel>Parameters</SectionLabel>
+        <ContentBlock label="Parameters" copyText={allParamsStr ?? undefined}>
           <div className="space-y-1">
             {keyParams.map(([k, v]) => (
               <div key={k} className="flex items-start gap-2 text-[10px] font-mono">
@@ -175,7 +261,7 @@ function ToolCallCard({ data }: { data: Record<string, unknown> }) {
               </div>
             ))}
           </div>
-        </div>
+        </ContentBlock>
       )}
     </div>
   );
@@ -184,10 +270,11 @@ function ToolCallCard({ data }: { data: Record<string, unknown> }) {
 function ToolResultCard({ data }: { data: Record<string, unknown> }) {
   const toolName = typeof data.toolName === "string" ? data.toolName
     : typeof data.name === "string" ? data.name : null;
-  const isError = data.isError === true;
+  const isError = data.isError === true || data.error != null || data.success === false;
   const output = typeof data.output === "string" ? data.output
     : typeof data.content === "string" ? data.content
-      : null;
+      : typeof data.result === "string" ? data.result
+        : null;
   const durationMs = typeof data.durationMs === "number" ? data.durationMs : null;
 
   return (
@@ -197,12 +284,11 @@ function ToolResultCard({ data }: { data: Record<string, unknown> }) {
         Tool {isError ? "failed" : "completed"}{toolName ? `: ${toolName}` : ""}
       </div>
       {output && (
-        <div>
-          <SectionLabel>Output</SectionLabel>
+        <ContentBlock label="Output" copyText={output}>
           <div className={`rounded p-2.5 text-[10px] font-mono leading-relaxed whitespace-pre-wrap break-words max-h-36 overflow-y-auto border ${isError ? "bg-red-500/5 border-red-500/20 text-red-300" : "bg-surface-0 border-border-subtle text-slate-400"}`}>
             {output.slice(0, 800)}{output.length > 800 ? "\n…(truncated)" : ""}
           </div>
-        </div>
+        </ContentBlock>
       )}
       {durationMs !== null && (
         <Pill label="took" value={durationMs < 1000 ? `${durationMs}ms` : `${(durationMs / 1000).toFixed(1)}s`} />
@@ -216,7 +302,6 @@ function MessageCard({ data, type }: { data: Record<string, unknown>; type: "rec
   const from = typeof data.from === "string" ? data.from : null;
   const to = typeof data.to === "string" ? data.to : null;
 
-  // Friendly format: "telegram:group:-100123" → "Telegram Group"
   const formatAddress = (addr: string) => {
     const parts = addr.split(":");
     if (parts.length >= 2) {
@@ -240,12 +325,11 @@ function MessageCard({ data, type }: { data: Record<string, unknown>; type: "rec
         </div>
       )}
       {content && (
-        <div>
-          <SectionLabel>Content</SectionLabel>
+        <ContentBlock label="Content" copyText={content}>
           <div className="bg-surface-0 border border-border-subtle rounded p-2.5 text-[11px] text-slate-300 leading-relaxed whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
             {content}
           </div>
-        </div>
+        </ContentBlock>
       )}
     </div>
   );
@@ -281,13 +365,13 @@ function FriendlyCard({ data }: { data: Record<string, unknown> }) {
 
   if (type === "llm_input") return <LlmInputCard data={data} />;
   if (type === "llm_output") return <LlmOutputCard data={data} />;
-  if (type === "tool_call") return <ToolCallCard data={data} />;
-  if (type === "tool_result") return <ToolResultCard data={data} />;
+  if (type === "tool_call" || type === "tool_call_start") return <ToolCallCard data={data} />;
+  if (type === "tool_result" || type === "tool_call_end") return <ToolResultCard data={data} />;
   if (type === "message_received") return <MessageCard data={data} type="received" />;
   if (type === "message_sent") return <MessageCard data={data} type="sent" />;
   if (type === "config_change" || type === "setup_file_change") return <FileChangeCard data={data} />;
 
-  return null; // fall through to raw JSON
+  return null;
 }
 
 // ─── Diff view ────────────────────────────────────────────────────────────────
@@ -333,6 +417,14 @@ function DiffView({ beforeRaw, afterRaw, filePath }: { beforeRaw: string; afterR
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+const FRIENDLY_TYPES = new Set([
+  "llm_input", "llm_output",
+  "tool_call", "tool_result",
+  "tool_call_start", "tool_call_end",
+  "message_received", "message_sent",
+  "config_change", "setup_file_change",
+]);
+
 export function DataInspector({ data }: { data: Record<string, unknown> }) {
   const [rawOpen, setRawOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -360,10 +452,7 @@ export function DataInspector({ data }: { data: Record<string, unknown> }) {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const hasFriendlyCard = (
-    typeof data.type === "string" &&
-    ["llm_input", "llm_output", "tool_call", "tool_result", "message_received", "message_sent", "config_change", "setup_file_change"].includes(data.type)
-  );
+  const hasFriendlyCard = typeof data.type === "string" && FRIENDLY_TYPES.has(data.type);
 
   return (
     <div className="space-y-2.5">
@@ -392,10 +481,10 @@ export function DataInspector({ data }: { data: Record<string, unknown> }) {
         {rawOpen && (
           <div className="relative">
             <pre
-              className="bg-surface-0 border border-border-subtle rounded p-3 text-[10px] text-terminal-green/50 overflow-x-hidden whitespace-pre-wrap break-all max-w-full font-mono leading-relaxed max-h-64 overflow-y-auto"
-              style={{ textShadow: "0 0 2px rgba(0,255,136,0.1)" }}
+              className="bg-surface-0 border border-border-subtle rounded p-3 text-[10px] overflow-x-hidden whitespace-pre-wrap break-all max-w-full font-mono leading-relaxed max-h-64 overflow-y-auto"
+              style={{ textShadow: "0 0 2px rgba(0,255,136,0.05)" }}
             >
-              {jsonStr}
+              <SyntaxHighlightedJson json={jsonStr} />
             </pre>
             <button
               onClick={handleCopy}

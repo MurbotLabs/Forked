@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
-import { Loader2, MousePointerClick } from "lucide-react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { Loader2, MousePointerClick, Search, X } from "lucide-react";
 import type { TraceEvent, FileSnapshot, Session } from "../../lib/types";
 import { fetchTraces, fetchSnapshots, createFork, fetchOpenClawConfig } from "../../lib/api";
 import { EmptyState } from "../common/EmptyState";
@@ -47,6 +47,157 @@ type Props = {
   onForkCreated: () => void;
 };
 
+// ─── Filter types ──────────────────────────────────────────────────────────────
+
+type FilterKey = "llm" | "tool" | "message" | "system";
+
+const FILTER_LABELS: Record<FilterKey, string> = {
+  llm: "LLM",
+  tool: "Tools",
+  message: "Messages",
+  system: "System",
+};
+
+const FILTER_COLORS: Record<FilterKey, string> = {
+  llm: "text-terminal-cyan border-terminal-cyan/40 bg-terminal-cyan/10",
+  tool: "text-terminal-amber border-terminal-amber/40 bg-terminal-amber/10",
+  message: "text-blue-400 border-blue-400/40 bg-blue-400/10",
+  system: "text-slate-400 border-slate-600 bg-slate-800/40",
+};
+
+const FILTER_COLORS_INACTIVE = "text-slate-700 border-slate-800 bg-transparent hover:border-slate-700 hover:text-slate-600";
+
+// ─── Stats helpers ─────────────────────────────────────────────────────────────
+
+function computeStats(events: TraceEvent[]) {
+  let llmCalls = 0;
+  let toolCalls = 0;
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let firstTs: number | null = null;
+  let lastTs: number | null = null;
+
+  for (const ev of events) {
+    if (ev.stream === "fork_info") continue;
+    if (firstTs === null || ev.ts < firstTs) firstTs = ev.ts;
+    if (lastTs === null || ev.ts > lastTs) lastTs = ev.ts;
+
+    try {
+      const data = JSON.parse(ev.data) as Record<string, unknown>;
+      const type = data.type;
+      if (type === "llm_input") llmCalls++;
+      if (type === "tool_call_start") toolCalls++;
+      if (type === "llm_output" && data.usage) {
+        const u = data.usage as Record<string, unknown>;
+        const inp = Number(u.input_tokens ?? u.prompt_tokens ?? u.input ?? 0);
+        const out = Number(u.output_tokens ?? u.completion_tokens ?? u.output ?? 0);
+        if (Number.isFinite(inp)) totalInputTokens += inp;
+        if (Number.isFinite(out)) totalOutputTokens += out;
+      }
+    } catch { /* skip */ }
+  }
+
+  const durationMs = firstTs !== null && lastTs !== null ? lastTs - firstTs : null;
+  const totalTokens = totalInputTokens + totalOutputTokens;
+
+  return { llmCalls, toolCalls, totalTokens, totalInputTokens, totalOutputTokens, durationMs };
+}
+
+function fmtDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  return `${m}m ${s}s`;
+}
+
+function fmtTokens(n: number): string {
+  if (n < 1000) return String(n);
+  return `${(n / 1000).toFixed(1)}k`;
+}
+
+// ─── Stats bar ─────────────────────────────────────────────────────────────────
+
+function StatsBar({ events }: { events: TraceEvent[] }) {
+  const stats = useMemo(() => computeStats(events), [events]);
+
+  return (
+    <div className="flex items-center gap-4 px-4 py-1.5 border-b border-dashed border-border-default bg-surface-1/30 shrink-0 flex-wrap">
+      <StatPill label="LLM calls" value={String(stats.llmCalls)} color="text-terminal-cyan/70" />
+      <StatPill label="Tool calls" value={String(stats.toolCalls)} color="text-terminal-amber/70" />
+      <StatPill label="Tokens" value={fmtTokens(stats.totalTokens)}
+        title={`↓${fmtTokens(stats.totalInputTokens)} in / ↑${fmtTokens(stats.totalOutputTokens)} out`}
+        color="text-terminal-green/70" />
+      {stats.durationMs !== null && (
+        <StatPill label="Duration" value={fmtDuration(stats.durationMs)} color="text-slate-400" />
+      )}
+    </div>
+  );
+}
+
+function StatPill({ label, value, color, title }: { label: string; value: string; color: string; title?: string }) {
+  return (
+    <span className="flex items-center gap-1.5 font-mono text-[9px]" title={title}>
+      <span className="text-slate-700 uppercase tracking-widest">{label}</span>
+      <span className={`${color} font-semibold tracking-wide`}>{value}</span>
+    </span>
+  );
+}
+
+// ─── Filter + search bar ──────────────────────────────────────────────────────
+
+function FilterBar({
+  activeFilters,
+  onToggle,
+  searchQuery,
+  onSearch,
+}: {
+  activeFilters: Set<string>;
+  onToggle: (key: string) => void;
+  searchQuery: string;
+  onSearch: (q: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 px-4 py-1.5 border-b border-dashed border-border-default bg-surface-1/20 shrink-0 flex-wrap">
+      <span className="text-[9px] text-slate-700 font-mono uppercase tracking-widest shrink-0">Filter</span>
+      {(Object.keys(FILTER_LABELS) as FilterKey[]).map((key) => {
+        const active = activeFilters.has(key);
+        return (
+          <button
+            key={key}
+            onClick={() => onToggle(key)}
+            className={`retro-badge cursor-pointer transition-all duration-100 ${active ? FILTER_COLORS[key] : FILTER_COLORS_INACTIVE}`}
+          >
+            {FILTER_LABELS[key]}
+          </button>
+        );
+      })}
+      <span className="flex-1" />
+      {/* Search */}
+      <div className="relative flex items-center">
+        <Search size={9} className="absolute left-2 text-slate-700 pointer-events-none" />
+        <input
+          type="text"
+          placeholder="search events..."
+          value={searchQuery}
+          onChange={(e) => onSearch(e.target.value)}
+          className="pl-6 pr-6 py-0.5 text-[9px] retro-input w-36 tracking-wide"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => onSearch("")}
+            className="absolute right-1.5 text-slate-700 hover:text-slate-400 transition-colors"
+          >
+            <X size={9} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
 const MAIN_BRANCH = "__main__";
 const SORT_KEY = "forked.timeline.sortOrder";
 
@@ -57,6 +208,14 @@ export function Timeline({ sessionId, sessions, onForkCreated }: Props) {
   const [forkEvent, setForkEvent] = useState<TraceEvent | null>(null);
   const [rewindTarget, setRewindTarget] = useState<RewindTarget | null>(null);
   const [availableModels, setAvailableModels] = useState<Array<{ id: string; alias?: string; isPrimary: boolean }>>([]);
+
+  // Filter + search state
+  const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Auto-scroll
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const isAtBottomRef = useRef(true);
 
   useEffect(() => {
     fetchOpenClawConfig()
@@ -71,7 +230,7 @@ export function Timeline({ sessionId, sessions, onForkCreated }: Props) {
         }));
         setAvailableModels(models);
       })
-      .catch(() => { /* silently ignore — model picker is optional */});
+      .catch(() => { /* silently ignore */ });
   }, []);
 
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">(() => {
@@ -126,6 +285,7 @@ export function Timeline({ sessionId, sessions, onForkCreated }: Props) {
     loadSessionData();
   }, [loadSessionData]);
 
+  // Polling for live sessions
   useEffect(() => {
     if (!sessionId) return;
     const intervalId = window.setInterval(() => {
@@ -133,6 +293,30 @@ export function Timeline({ sessionId, sessions, onForkCreated }: Props) {
     }, 3000);
     return () => window.clearInterval(intervalId);
   }, [sessionId, loadSessionData]);
+
+  // Auto-scroll: when new events arrive and user is at bottom, scroll to bottom
+  useEffect(() => {
+    if (!scrollRef.current || !isAtBottomRef.current) return;
+    if (sortOrder === "desc") {
+      // desc = newest first at top, so scroll to top
+      scrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      // asc = newest at bottom, scroll to bottom
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    }
+  }, [sessionEvents, sortOrder]);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const distFromTop = el.scrollTop;
+    if (sortOrder === "desc") {
+      isAtBottomRef.current = distFromTop < 80;
+    } else {
+      isAtBottomRef.current = distFromBottom < 80;
+    }
+  }, [sortOrder]);
 
   const laneRoot = useMemo(
     () => buildLaneTree(sessionId, sessionEvents, sessionSnapshots, conversationSessionByRun),
@@ -161,6 +345,18 @@ export function Timeline({ sessionId, sessions, onForkCreated }: Props) {
     onForkCreated();
     setTimeout(() => loadSessionData({ silent: true }), 900);
   }, [onForkCreated, loadSessionData]);
+
+  const toggleFilter = useCallback((key: string) => {
+    setActiveFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
 
   if (!sessionId) {
     return (
@@ -220,7 +416,22 @@ export function Timeline({ sessionId, sessions, onForkCreated }: Props) {
           onSortChange={setSortOrder}
         />
 
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3">
+        {/* Stats bar */}
+        <StatsBar events={sessionEvents} />
+
+        {/* Filter + search bar */}
+        <FilterBar
+          activeFilters={activeFilters}
+          onToggle={toggleFilter}
+          searchQuery={searchQuery}
+          onSearch={setSearchQuery}
+        />
+
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3"
+        >
           <div className="space-y-3 pb-4">
             {lanes.map((entry) => (
               <div key={`${entry.lane.runId}:${entry.depth}`} style={{ marginLeft: entry.depth * 20 }}>
@@ -229,6 +440,8 @@ export function Timeline({ sessionId, sessions, onForkCreated }: Props) {
                   depth={entry.depth}
                   isMain={entry.isMain}
                   sortOrder={sortOrder}
+                  typeFilters={activeFilters}
+                  searchQuery={searchQuery}
                   onFork={(event) => setForkEvent(event)}
                   onRewind={(target) => setRewindTarget(target)}
                 />

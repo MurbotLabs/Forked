@@ -2,7 +2,6 @@
 set -e
 
 FORKED_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-STANDARD_DIR="$HOME/forked"
 OC_CONFIG="$HOME/.openclaw/openclaw.json"
 
 echo ""
@@ -14,31 +13,6 @@ echo "  ██║     ╚██████╔╝██║  ██║██║  
 echo "  ╚═╝      ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═════╝ "
 echo ""
 echo "  Time-Travel Debugger — Installer"
-echo ""
-
-# ── Path check ────────────────────────────────────────────────────────────────
-
-if [ "$FORKED_DIR" = "$STANDARD_DIR" ]; then
-  echo "  [ok] Installing from standard path: $STANDARD_DIR"
-else
-  echo "  [!] Non-standard install path detected."
-  echo "      Current : $FORKED_DIR"
-  echo "      Standard: $STANDARD_DIR"
-  echo ""
-  echo "  The standard path makes setup identical for everyone."
-  echo "  To use the standard path, exit and re-clone:"
-  echo ""
-  echo "      git clone https://github.com/MurbotLabs/Forked.git ~/forked"
-  echo "      cd ~/forked && ./install.sh"
-  echo ""
-  printf "  Continue installing from %s? [y/N] " "$FORKED_DIR"
-  read -r answer
-  if [[ ! "$answer" =~ ^[Yy]$ ]]; then
-    echo "  Aborted."
-    exit 0
-  fi
-fi
-
 echo ""
 
 # ── Checks ────────────────────────────────────────────────────────────────────
@@ -86,7 +60,7 @@ install_deps "$FORKED_DIR/forked-ui"      "forked-ui"
 
 echo ""
 
-# ── Patch ~/.openclaw/openclaw.json ──────────────────────────────────────────
+# ── Patch ~/.openclaw/openclaw.json ───────────────────────────────────────────
 
 TRACER_PATH="$FORKED_DIR/forked-tracer"
 
@@ -123,10 +97,52 @@ writeFileSync(configPath, JSON.stringify(config, null, 4) + "\n");
 console.log("  [ok] OpenClaw config updated");
 EOF
 
-# ── Make CLI executable ────────────────────────────────────────────────────────
+# ── Make CLIs executable ───────────────────────────────────────────────────────
 
 chmod +x "$FORKED_DIR/forked"
+chmod +x "$FORKED_DIR/uninstall.sh"
 echo "  [ok] forked CLI is executable"
+
+# ── Auto-add to PATH ───────────────────────────────────────────────────────────
+
+PATH_LINE="export PATH=\"$FORKED_DIR:\$PATH\""
+
+# Detect shell rc file
+if [ -n "$ZSH_VERSION" ] || [[ "$SHELL" == */zsh ]]; then
+  RC_FILE="$HOME/.zshrc"
+elif [ -n "$BASH_VERSION" ] || [[ "$SHELL" == */bash ]]; then
+  # macOS uses .bash_profile, Linux uses .bashrc
+  if [[ "$(uname)" == "Darwin" ]]; then
+    RC_FILE="$HOME/.bash_profile"
+  else
+    RC_FILE="$HOME/.bashrc"
+  fi
+else
+  RC_FILE="$HOME/.zshrc"  # sensible default
+fi
+
+# Only add the line if this dir isn't already in the rc file
+if grep -qF "$FORKED_DIR" "$RC_FILE" 2>/dev/null; then
+  echo "  [ok] PATH already configured in $RC_FILE"
+else
+  echo "" >> "$RC_FILE"
+  echo "# Forked — Time-Travel Debugger" >> "$RC_FILE"
+  echo "$PATH_LINE" >> "$RC_FILE"
+  echo "  [ok] Added forked to PATH in $RC_FILE"
+fi
+
+# ── Restart gateway if already running ────────────────────────────────────────
+
+echo ""
+echo "  [+] Restarting OpenClaw gateway to load the Forked tracer..."
+if command -v openclaw &>/dev/null; then
+  openclaw gateway stop 2>/dev/null || true
+  sleep 1
+  openclaw gateway start 2>/dev/null || true
+  echo "  [ok] Gateway restarted"
+else
+  echo "  [skip] openclaw not in PATH yet — start your gateway manually after setup"
+fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 
@@ -134,25 +150,14 @@ echo ""
 echo "  ✓ Forked installed successfully!"
 echo ""
 echo "  ─────────────────────────────────────────────────"
-echo "  FINAL STEP — add forked to your PATH"
+echo "  ONE LAST STEP — reload your shell:"
 echo ""
-echo "  Paste this line into your ~/.zshrc or ~/.bashrc:"
+echo "      source $RC_FILE"
 echo ""
-echo "      export PATH=\"$FORKED_DIR:\$PATH\""
+echo "  (or just open a new terminal)"
 echo ""
-echo "  Then reload your shell:"
+echo "  Then start the UI:"
 echo ""
-echo "      source ~/.zshrc"
-echo ""
-echo "  ─────────────────────────────────────────────────"
-echo "  HOW TO USE"
-echo ""
-echo "  1. Start your OpenClaw gateway as normal."
-echo "     The Forked daemon starts automatically when the gateway loads."
-echo ""
-echo "  2. Launch the Forked UI:"
-echo ""
-echo "       forked run ui"
-echo ""
+echo "      forked run ui"
 echo "  ─────────────────────────────────────────────────"
 echo ""

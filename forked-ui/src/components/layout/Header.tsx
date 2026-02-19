@@ -37,6 +37,25 @@ export function Header({ onRefresh, isConnected = true }: Props) {
           <pre className="text-[4.5px] leading-[5px] text-accent font-mono select-none crt-glow whitespace-pre">
             {ASCII_LOGO}
           </pre>
+          {/* Fork logo — inline SVG so currentColor works with theme */}
+          <svg
+            viewBox="0 0 100 112"
+            fill="none"
+            className="h-8 w-auto select-none text-accent opacity-30 crt-glow"
+            aria-hidden="true"
+          >
+            <path d="M 50 54 C 49 43 36 30 16 16" stroke="currentColor" strokeWidth="6" strokeLinecap="square" strokeLinejoin="miter"/>
+            <path d="M 16 16 L 5 23" stroke="currentColor" strokeWidth="5.5" strokeLinecap="square"/>
+            <path d="M 16 16 L 23 5"  stroke="currentColor" strokeWidth="5.5" strokeLinecap="square"/>
+            <path d="M 50 54 C 51 43 64 30 84 16" stroke="currentColor" strokeWidth="6" strokeLinecap="square" strokeLinejoin="miter"/>
+            <path d="M 84 16 L 95 23" stroke="currentColor" strokeWidth="5.5" strokeLinecap="square"/>
+            <path d="M 84 16 L 77 5"  stroke="currentColor" strokeWidth="5.5" strokeLinecap="square"/>
+            <path d="M 50 57 L 50 79" stroke="currentColor" strokeWidth="6" strokeLinecap="square"/>
+            <circle cx="50" cy="87" r="7.5" stroke="currentColor" strokeWidth="4.5"/>
+            <circle cx="50" cy="87" r="2.5" fill="currentColor"/>
+            <rect x="44" y="95" width="12" height="4" fill="currentColor"/>
+            <rect x="41" y="99" width="18" height="3" fill="currentColor"/>
+          </svg>
           <div className="flex flex-col gap-0.5">
             <span className="text-[9px] text-terminal-green font-mono tracking-[0.3em] uppercase crt-glow-amber" style={{ textShadow: '0 0 4px rgba(0,255,136,0.4)' }}>
               Time-Travel Debugger

@@ -1137,6 +1137,7 @@ function sendToGateway(message, sessionKey, deliveryHint = null) {
               message,
               agentId,
               sessionKey: sessionKey || undefined,
+              deliver: true,
               idempotencyKey: agentReqId,
               timeout: 120,
             },

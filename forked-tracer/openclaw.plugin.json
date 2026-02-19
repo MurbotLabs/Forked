@@ -1,0 +1,8 @@
+{
+  "id": "forked-tracer",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

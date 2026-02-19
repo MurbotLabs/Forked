@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+usage() {
+  echo "Usage: forked <command> [subcommand]"
+  echo ""
+  echo "Commands:"
+  echo "  run ui    Start the Forked UI dev server"
+  exit 1
+}
+
+if [[ $# -lt 2 ]]; then
+  usage
+fi
+
+command="$1"
+subcommand="$2"
+
+if [[ "$command" == "run" && "$subcommand" == "ui" ]]; then
+  # Soft check: warn if daemon appears down, but don't block
+  if ! curl -sf http://127.0.0.1:8000/api/health > /dev/null 2>&1; then
+    echo "[forked] Warning: daemon does not appear to be running (is the gateway up?)"
+    echo "[forked] The UI will start but may show 'Offline' until the daemon is available."
+    echo ""
+  fi
+
+  echo "[forked] Starting Forked UI..."
+  cd "$SCRIPT_DIR/forked-ui"
+  exec npm run dev
+else
+  usage
+fi

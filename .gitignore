@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+forked-tracer/node_modules/
+forked-daemon/node_modules/
+forked-ui/node_modules/
+
+# Build output
+forked-ui/dist/
+forked-ui/.vite/
+
+# Daemon data
+forked-daemon/*.db
+forked-daemon/*.db-shm
+forked-daemon/*.db-wal
+
+# Env / local config
+.env
+.env.local
+*.local
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# OpenClaw source (not part of Forked — users have their own installation)
+openclaw/
+rewind-lab/
+rewind-lab.baseline/

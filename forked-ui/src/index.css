@@ -1,0 +1,267 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface-0: #050508;
+  --color-surface-1: #0a0a10;
+  --color-surface-2: #10101c;
+  --color-surface-3: #18182c;
+  --color-surface-4: #222240;
+  --color-surface-hover: #1c1c38;
+
+  --color-border-default: #1a1a30;
+  --color-border-subtle: #12122a;
+  --color-border-active: #33335c;
+
+  --color-accent: #6366f1;
+  --color-accent-hover: #818cf8;
+  --color-rewind: #8b5cf6;
+  --color-rewind-hover: #a78bfa;
+
+  --color-terminal-green: #00ff88;
+  --color-terminal-green-dim: #00cc6a;
+  --color-terminal-amber: #ffb000;
+  --color-terminal-cyan: #00e5ff;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: local("IBM Plex Mono"), local("IBMPlexMono");
+  font-display: swap;
+}
+
+body {
+  margin: 0;
+  font-family: "IBM Plex Mono", "JetBrains Mono", "Fira Code", "SF Mono", "Cascadia Code", "Consolas", monospace;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-surface-0);
+  color: #b0b8d0;
+}
+
+.font-mono {
+  font-family: "IBM Plex Mono", "JetBrains Mono", "Fira Code", "SF Mono", "Cascadia Code", "Consolas", monospace;
+}
+
+/* Custom scrollbar — thin, terminal style */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1a1a30;
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #33335c;
+}
+
+/* ══════════════════════════════════════════
+   RETRO EFFECTS
+   ══════════════════════════════════════════ */
+
+/* CRT glow on text */
+.crt-glow {
+  text-shadow:
+    0 0 4px rgba(99, 102, 241, 0.7),
+    0 0 12px rgba(99, 102, 241, 0.4),
+    0 0 24px rgba(99, 102, 241, 0.15);
+}
+
+.crt-glow-green {
+  box-shadow:
+    0 0 3px rgba(0, 255, 136, 0.5),
+    0 0 8px rgba(0, 255, 136, 0.25);
+}
+
+.crt-glow-amber {
+  text-shadow:
+    0 0 4px rgba(255, 176, 0, 0.5),
+    0 0 10px rgba(255, 176, 0, 0.2);
+}
+
+/* Scanline overlay — used on header and sidebar */
+.scanlines {
+  background: repeating-linear-gradient(0deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 255, 255, 0.015) 2px,
+      rgba(255, 255, 255, 0.015) 4px);
+  pointer-events: none;
+}
+
+/* Full-screen scanline for the entire app */
+.scanlines-full::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999;
+  background: repeating-linear-gradient(0deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 255, 255, 0.008) 2px,
+      rgba(255, 255, 255, 0.008) 4px);
+}
+
+/* Grid overlay for panels */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Terminal-style border effect */
+.terminal-border {
+  border: 1px solid #1a1a30;
+  box-shadow:
+    inset 0 0 30px rgba(0, 0, 0, 0.3),
+    0 0 1px rgba(99, 102, 241, 0.15);
+}
+
+/* Retro card — slight rounded corners, glow border */
+.retro-card {
+  background: linear-gradient(180deg, #0d0d18 0%, #0a0a12 100%);
+  border: 1px solid #1a1a30;
+  border-radius: 6px;
+  box-shadow:
+    0 0 1px rgba(99, 102, 241, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.retro-card:hover {
+  border-color: #2a2a50;
+  box-shadow:
+    0 0 8px rgba(99, 102, 241, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.retro-card-selected {
+  border-color: rgba(99, 102, 241, 0.4) !important;
+  box-shadow:
+    0 0 12px rgba(99, 102, 241, 0.12),
+    inset 0 0 20px rgba(99, 102, 241, 0.03) !important;
+}
+
+/* Glowing status dot */
+.status-dot {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 4px currentColor;
+  }
+
+  50% {
+    opacity: 0.6;
+    box-shadow: 0 0 8px currentColor;
+  }
+}
+
+/* Blinking cursor effect */
+.blink-cursor::after {
+  content: "█";
+  animation: blink 1s step-end infinite;
+  color: var(--color-terminal-green);
+  font-size: 0.75em;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Noise texture overlay */
+.noise-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.02;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  background-size: 128px 128px;
+}
+
+/* ══════════════════════════════════════════
+   GLOW EFFECTS FOR SEMANTIC COLORS
+   ══════════════════════════════════════════ */
+
+.glow-accent {
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.2), 0 0 30px rgba(99, 102, 241, 0.06);
+}
+
+.glow-rewind {
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.2), 0 0 30px rgba(139, 92, 246, 0.06);
+}
+
+.glow-error {
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.15), 0 0 35px rgba(239, 68, 68, 0.05);
+}
+
+/* Retro input — terminal-style inputs */
+.retro-input {
+  background: #08080e;
+  border: 1px solid #1a1a30;
+  color: var(--color-terminal-green);
+  font-family: inherit;
+  border-radius: 4px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.retro-input:focus {
+  outline: none;
+  border-color: rgba(0, 255, 136, 0.3);
+  box-shadow: 0 0 8px rgba(0, 255, 136, 0.08);
+}
+
+.retro-input::placeholder {
+  color: #2a2a45;
+}
+
+/* Retro button base */
+.retro-btn {
+  font-family: inherit;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-size: 10px;
+  border-radius: 4px;
+  border: 1px solid;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.retro-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Badge retro style */
+.retro-badge {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid;
+  font-family: inherit;
+}
+
+/* Divider with retro terminal feel */
+.retro-divider {
+  border-color: #1a1a30;
+  border-style: dashed;
+}

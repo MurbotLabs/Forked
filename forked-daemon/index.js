@@ -1309,7 +1309,7 @@ app.post("/api/fork", async (req, res) => {
         forkStartedAt + 1,
         JSON.stringify({
           type: "message_received",
-          from: "forked:user",
+          source: "forked",   // display label — intentionally not 'from' so it can't be parsed as a channel address
           content: forkMessage,
           timestamp: forkStartedAt,
           synthetic: true,

@@ -2,6 +2,7 @@
 set -e
 
 FORKED_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STANDARD_DIR="$HOME/forked"
 OC_CONFIG="$HOME/.openclaw/openclaw.json"
 
 echo ""
@@ -13,7 +14,31 @@ echo "  ██║     ╚██████╔╝██║  ██║██║  
 echo "  ╚═╝      ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═════╝ "
 echo ""
 echo "  Time-Travel Debugger — Installer"
-echo "  Installing into: $FORKED_DIR"
+echo ""
+
+# ── Path check ────────────────────────────────────────────────────────────────
+
+if [ "$FORKED_DIR" = "$STANDARD_DIR" ]; then
+  echo "  [ok] Installing from standard path: $STANDARD_DIR"
+else
+  echo "  [!] Non-standard install path detected."
+  echo "      Current : $FORKED_DIR"
+  echo "      Standard: $STANDARD_DIR"
+  echo ""
+  echo "  The standard path makes setup identical for everyone."
+  echo "  To use the standard path, exit and re-clone:"
+  echo ""
+  echo "      git clone https://github.com/MurbotLabs/Forked.git ~/forked"
+  echo "      cd ~/forked && ./install.sh"
+  echo ""
+  printf "  Continue installing from %s? [y/N] " "$FORKED_DIR"
+  read -r answer
+  if [[ ! "$answer" =~ ^[Yy]$ ]]; then
+    echo "  Aborted."
+    exit 0
+  fi
+fi
+
 echo ""
 
 # ── Checks ────────────────────────────────────────────────────────────────────
@@ -81,17 +106,15 @@ try {
   process.exit(1);
 }
 
-// Ensure plugins.load.paths exists and contains the tracer path
 config.plugins ??= {};
 config.plugins.load ??= {};
 config.plugins.load.paths ??= [];
 
-// Remove any stale forked-tracer paths (e.g. old dev locations), then add ours
+// Remove any stale forked-tracer paths, then add ours
 config.plugins.load.paths = config.plugins.load.paths
   .filter(p => !p.includes("forked-tracer"))
   .concat(tracerPath);
 
-// Ensure plugins.entries.forked-tracer is enabled
 config.plugins.entries ??= {};
 config.plugins.entries["forked-tracer"] ??= {};
 config.plugins.entries["forked-tracer"].enabled = true;
@@ -111,16 +134,23 @@ echo ""
 echo "  ✓ Forked installed successfully!"
 echo ""
 echo "  ─────────────────────────────────────────────────"
+echo "  FINAL STEP — add forked to your PATH"
+echo ""
+echo "  Paste this line into your ~/.zshrc or ~/.bashrc:"
+echo ""
+echo "      export PATH=\"$FORKED_DIR:\$PATH\""
+echo ""
+echo "  Then reload your shell:"
+echo ""
+echo "      source ~/.zshrc"
+echo ""
+echo "  ─────────────────────────────────────────────────"
 echo "  HOW TO USE"
 echo ""
-echo "  1. Add the forked CLI to your PATH (add to ~/.zshrc or ~/.bashrc):"
-echo ""
-echo "       export PATH=\"$FORKED_DIR:\$PATH\""
-echo ""
-echo "  2. Start your OpenClaw gateway as normal."
+echo "  1. Start your OpenClaw gateway as normal."
 echo "     The Forked daemon starts automatically when the gateway loads."
 echo ""
-echo "  3. Launch the Forked UI:"
+echo "  2. Launch the Forked UI:"
 echo ""
 echo "       forked run ui"
 echo ""

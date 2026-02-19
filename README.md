@@ -35,26 +35,28 @@ Forked is a time-travel debugger that wraps your [OpenClaw](https://openclaw.ai)
 
 ## Installation
 
-Clone the repo and run the installer:
+Clone to the standard path and run the installer:
 
 ```bash
-git clone https://github.com/your-username/forked.git
-cd forked
+git clone https://github.com/MurbotLabs/Forked.git ~/forked
+cd ~/forked
 ./install.sh
 ```
+
+> **Why `~/forked`?** This is the standard install location. Everyone using Forked has the same path, which makes setup and troubleshooting consistent. You can install elsewhere if needed — the installer will warn you and still work.
 
 The installer will:
 1. Install dependencies for the tracer, daemon, and UI
 2. Register the Forked tracer plugin with your OpenClaw config (`~/.openclaw/openclaw.json`)
-3. Make the `forked` CLI executable
+3. Print the exact PATH line to copy
 
-Then add the `forked` command to your PATH. The installer prints the exact line to copy at the end — it will look like this:
+Add the `forked` command to your PATH by pasting this into your `~/.zshrc` or `~/.bashrc`:
 
 ```bash
-export PATH="/wherever/you/cloned/forked:$PATH"
+export PATH="$HOME/forked:$PATH"
 ```
 
-Paste that line into your `~/.zshrc` or `~/.bashrc`, then reload your shell:
+Then reload your shell:
 
 ```bash
 source ~/.zshrc   # or ~/.bashrc

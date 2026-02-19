@@ -37,19 +37,6 @@ Forked is a time-travel debugger that wraps your [OpenClaw](https://openclaw.ai)
 
 Clone to the standard path and run the installer.
 
-**If the repo is private** (recommended), use the GitHub CLI:
-
-```bash
-# First time only — authenticates gh with your GitHub account (opens browser)
-gh auth login
-
-gh repo clone MurbotLabs/Forked ~/forked
-cd ~/forked
-./install.sh
-```
-
-**If the repo is public:**
-
 ```bash
 git clone https://github.com/MurbotLabs/Forked.git ~/forked
 cd ~/forked

@@ -517,12 +517,12 @@ wss.on("connection", (ws) => {
             1
           );
         } else if (data.type === "tool_call_end" && snap.filePath) {
-            updateSnapshotAfterStmt.run(
-              snap.contentAfter ?? null,
-              snap.existsAfter ? 1 : 0,
-              eventRunId,
-              snap.filePath
-            );
+          updateSnapshotAfterStmt.run(
+            snap.contentAfter ?? null,
+            snap.existsAfter ? 1 : 0,
+            eventRunId,
+            snap.filePath
+          );
         } else if ((data.type === "config_change" || data.type === "setup_file_change") && snap.filePath) {
           insertSnapshotStmt.run(
             eventRunId,
@@ -1137,10 +1137,6 @@ function sendToGateway(message, sessionKey, deliveryHint = null) {
               message,
               agentId,
               sessionKey: sessionKey || undefined,
-              deliver: true,
-              replyChannel: deliveryHint?.channel,
-              replyTo: deliveryHint?.to,
-              threadId: deliveryHint?.threadId,
               idempotencyKey: agentReqId,
               timeout: 120,
             },
@@ -1429,18 +1425,18 @@ app.post("/api/fork", async (req, res) => {
         const startedAtSecs = Math.floor(forkStartedAt / 1000) - 1;
         const recentRuns = sessionKey
           ? db.prepare(
-              `SELECT DISTINCT run_id FROM traces
+            `SELECT DISTINCT run_id FROM traces
                WHERE created_at > datetime(?, 'unixepoch')
                  AND session_key = ?
                  AND run_id != ? AND run_id != ?
                ORDER BY created_at DESC LIMIT 5`
-            ).all(startedAtSecs, sessionKey, newSessionId, originalRunId)
+          ).all(startedAtSecs, sessionKey, newSessionId, originalRunId)
           : db.prepare(
-              `SELECT DISTINCT run_id FROM traces
+            `SELECT DISTINCT run_id FROM traces
                WHERE created_at > datetime(?, 'unixepoch')
                  AND run_id != ? AND run_id != ?
                ORDER BY created_at DESC LIMIT 5`
-            ).all(startedAtSecs, newSessionId, originalRunId);
+          ).all(startedAtSecs, newSessionId, originalRunId);
 
         for (const row of recentRuns) {
           if (!pendingForks.has(forkId)) break;

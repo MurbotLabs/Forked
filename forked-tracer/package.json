@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "description": "Forked time-travel debugger tracer extension for OpenClaw",
   "type": "module",
-  "dependencies": {
-    "ws": "^8.18.0"
+  "devDependencies": {
+    "openclaw": "workspace:*"
   },
   "openclaw": {
     "extensions": [

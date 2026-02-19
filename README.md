@@ -48,13 +48,13 @@ The installer will:
 2. Register the Forked tracer plugin with your OpenClaw config (`~/.openclaw/openclaw.json`)
 3. Make the `forked` CLI executable
 
-Then add the `forked` command to your PATH — paste this into your `~/.zshrc` or `~/.bashrc`:
+Then add the `forked` command to your PATH. The installer prints the exact line to copy at the end — it will look like this:
 
 ```bash
-export PATH="/path/to/forked:$PATH"
+export PATH="/wherever/you/cloned/forked:$PATH"
 ```
 
-Reload your shell:
+Paste that line into your `~/.zshrc` or `~/.bashrc`, then reload your shell:
 
 ```bash
 source ~/.zshrc   # or ~/.bashrc

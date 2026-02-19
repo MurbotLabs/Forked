@@ -9,6 +9,7 @@ usage() {
   echo "Commands:"
   echo "  run ui    Start the Forked UI dev server"
   echo "  update    Pull the latest version from GitHub and update dependencies"
+  echo "  uninstall Remove Forked from your OpenClaw setup"
   exit 1
 }
 
@@ -57,6 +58,9 @@ elif [[ "$command" == "update" ]]; then
   echo "  Restart your OpenClaw gateway to pick up any tracer changes:"
   echo "    openclaw gateway stop && openclaw gateway start"
   echo ""
+
+elif [[ "$command" == "uninstall" ]]; then
+  exec "$SCRIPT_DIR/uninstall.sh"
 
 else
   usage

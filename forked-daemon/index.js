@@ -881,12 +881,6 @@ function findPreferredHintFromRows(rows, sessionChannel) {
 function deriveForkDeliveryHint({ modifiedData, history, sessionKey }) {
   const sessionChannel = parseChannelFromSessionKey(sessionKey);
 
-  // Note: do NOT bail out early when sessionChannel is null.
-  // The session_key stored by the tracer is typically the bare UUID (e.g. 4a6d395a-...)
-  // without the "agent:channel:" prefix the gateway uses internally. We still need to
-  // search the event history for a configured-channel address so we can explicitly
-  // override the gateway's own session-channel association (which may be stale/wrong).
-
   const fromModified = extractDeliveryHintFromEventData(modifiedData);
   if (fromModified && isConfiguredChannel(fromModified.channel) && matchesSessionChannel(fromModified, sessionChannel)) {
     return fromModified;
@@ -898,6 +892,16 @@ function deriveForkDeliveryHint({ modifiedData, history, sessionKey }) {
   // Fallback: look across the full session timeline for the most recent target.
   if (sessionKey) {
     const rows = getRecentLifecycleEventsForSessionStmt.all(sessionKey);
+    console.log(`[Forked Daemon] Hint search: found ${rows.length} lifecycle rows for session ${sessionKey?.slice(0, 8)}`);
+    if (rows.length > 0) {
+      // Log the first few 'from'/'to' fields to debug address format
+      for (const row of rows.slice(0, 5)) {
+        try {
+          const d = JSON.parse(row.data);
+          if (d.from || d.to) console.log(`  -> type=${d.type} from=${d.from ?? "(none)"} to=${d.to ?? "(none)"}`);
+        } catch { /* skip */ }
+      }
+    }
     const fromSession = findPreferredHintFromRows(rows, sessionChannel);
     if (fromSession && isConfiguredChannel(fromSession.channel)) return fromSession;
   }
@@ -1139,15 +1143,6 @@ function sendToGateway(message, sessionKey, deliveryHint = null) {
               message,
               agentId,
               sessionKey: sessionKey || undefined,
-              deliver: true,
-              // Explicitly override the gateway's session channel association if we
-              // found a validated configured-channel address (e.g. telegram). This
-              // prevents the gateway from routing to a stale/wrong channel (e.g. whatsapp).
-              ...(deliveryHint && deliveryHint.channel && deliveryHint.to ? {
-                replyChannel: deliveryHint.channel,
-                replyTo: deliveryHint.to,
-                ...(deliveryHint.threadId ? { threadId: deliveryHint.threadId } : {}),
-              } : {}),
               idempotencyKey: agentReqId,
               timeout: 120,
             },
@@ -1417,9 +1412,33 @@ app.post("/api/fork", async (req, res) => {
       }
 
       const gwResult = await sendToGateway(forkMessage, sessionKey, deliveryHint);
-      console.log("[Forked Daemon] Gateway fork response:", JSON.stringify(gwResult, null, 2));
+      console.log("[Forked Daemon] Gateway fork response received. Status:", gwResult?.payload?.status ?? "unknown");
 
       const payload = gwResult?.payload ?? null;
+
+      // Manually deliver the LLM response to the user's channel.
+      // We do NOT use deliver:true on the agent request because the gateway routes
+      // delivery via its own session-channel association, which may be stale (e.g.
+      // points to WhatsApp when the user is now on Telegram).
+      const responseTexts = payload?.result?.payloads
+        ?.map((p) => (typeof p?.text === "string" ? p.text : null))
+        .filter(Boolean) ?? [];
+      const responseText = responseTexts.join("\n\n") || null;
+
+      // Re-derive hint now (history is fresh after agent ran; also check full session)
+      const postRunHint = deliveryHint ?? deriveForkDeliveryHint({ modifiedData, history: [], sessionKey });
+      console.log("[Forked Daemon] Post-run delivery hint:", postRunHint ?? "(none)");
+
+      if (responseText && postRunHint) {
+        try {
+          await sendForkEchoToGateway(responseText, postRunHint);
+          console.log("[Forked Daemon] Manually delivered fork response to", postRunHint.channel, postRunHint.to);
+        } catch (deliverErr) {
+          console.warn("[Forked Daemon] Manual delivery failed (response was returned to caller anyway):", deliverErr.message);
+        }
+      } else if (responseText) {
+        console.warn("[Forked Daemon] Have response text but no delivery hint — response not forwarded to user channel.");
+      }
       const gatewayRunId =
         typeof payload?.runId === "string"
           ? payload.runId

@@ -110,29 +110,31 @@ echo "  [ok] forked CLI is executable"
 
 PATH_LINE="export PATH=\"$FORKED_DIR:\$PATH\""
 
-# Detect shell rc file
+# Detect shell rc file(s)
 if [ -n "$ZSH_VERSION" ] || [[ "$SHELL" == */zsh ]]; then
-  RC_FILE="$HOME/.zshrc"
-elif [ -n "$BASH_VERSION" ] || [[ "$SHELL" == */bash ]]; then
-  # macOS uses .bash_profile, Linux uses .bashrc
-  if [[ "$(uname)" == "Darwin" ]]; then
-    RC_FILE="$HOME/.bash_profile"
-  else
-    RC_FILE="$HOME/.bashrc"
-  fi
+  RC_FILES=("$HOME/.zshrc")
+elif [[ "$(uname)" == "Darwin" ]]; then
+  # macOS: bash_profile is the login shell file
+  RC_FILES=("$HOME/.bash_profile")
 else
-  RC_FILE="$HOME/.zshrc"  # sensible default
+  # Linux VPS: SSH login shells read ~/.profile, NOT ~/.bashrc
+  # Add to both so it works for login shells and interactive shells
+  RC_FILES=("$HOME/.profile" "$HOME/.bashrc")
 fi
 
-# Only add the line if this dir isn't already in the rc file
-if grep -qF "$FORKED_DIR" "$RC_FILE" 2>/dev/null; then
-  echo "  [ok] PATH already configured in $RC_FILE"
-else
-  echo "" >> "$RC_FILE"
-  echo "# Forked — Time-Travel Debugger" >> "$RC_FILE"
-  echo "$PATH_LINE" >> "$RC_FILE"
-  echo "  [ok] Added forked to PATH in $RC_FILE"
-fi
+for RC_FILE in "${RC_FILES[@]}"; do
+  if grep -qF "$FORKED_DIR" "$RC_FILE" 2>/dev/null; then
+    echo "  [ok] PATH already configured in $RC_FILE"
+  else
+    echo "" >> "$RC_FILE"
+    echo "# Forked — Time-Travel Debugger" >> "$RC_FILE"
+    echo "$PATH_LINE" >> "$RC_FILE"
+    echo "  [ok] Added forked to PATH in $RC_FILE"
+  fi
+done
+
+# Source the first rc file immediately so PATH works in this session
+export PATH="$FORKED_DIR:$PATH"
 
 # ── Restart gateway if already running ────────────────────────────────────────
 
@@ -153,11 +155,10 @@ echo ""
 echo "  ✓ Forked installed successfully!"
 echo ""
 echo "  ─────────────────────────────────────────────────"
-echo "  ONE LAST STEP — reload your shell:"
+echo "  PATH is active in this session. For future"
+echo "  sessions, open a new terminal or run:"
 echo ""
-echo "      source $RC_FILE"
-echo ""
-echo "  (or just open a new terminal)"
+echo "      source ${RC_FILES[0]}"
 echo ""
 echo "  Then start the UI:"
 echo ""

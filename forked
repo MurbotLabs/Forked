@@ -8,6 +8,7 @@ usage() {
   echo ""
   echo "Commands:"
   echo "  run ui    Start the Forked UI dev server"
+  echo "  audit     Check that everything is running correctly and auto-fix issues"
   echo "  update    Pull the latest version from GitHub and update dependencies"
   echo "  uninstall Remove Forked from your OpenClaw setup"
   exit 1
@@ -20,17 +21,224 @@ fi
 command="$1"
 subcommand="${2:-}"
 
-if [[ "$command" == "run" && "$subcommand" == "ui" ]]; then
-  # Soft check: warn if daemon appears down, but don't block
-  if ! curl -sf http://127.0.0.1:8000/api/health > /dev/null 2>&1; then
-    echo "[forked] Warning: daemon does not appear to be running (is the gateway up?)"
-    echo "[forked] The UI will start but may show 'Offline' until the daemon is available."
+# ── audit ──────────────────────────────────────────────────────────────────────
+
+run_audit() {
+  local OC_CONFIG="$HOME/.openclaw/openclaw.json"
+  local ISSUES=0
+  local GATEWAY_NEEDS_RESTART=false
+  local DAEMON_WAS_DOWN=false
+  local NODE_BIN=""
+
+  _ok()    { echo "  [ok]    $1"; }
+  _fail()  { echo "  [fail]  $1"; ISSUES=$((ISSUES + 1)); }
+  _fixed() { echo "  [fixed] $1"; ISSUES=$((ISSUES - 1)); }
+  _info()  { echo "  [i]     $1"; }
+  _warn()  { echo "  [!]     $1"; }
+
+  echo ""
+  echo "  Forked Audit"
+  echo "  ─────────────────────────────────────────────"
+  echo ""
+
+  # ── 1. Node.js ───────────────────────────────────────────────────────────────
+  if command -v node &>/dev/null; then
+    NODE_BIN="$(command -v node)"
+    NODE_MAJOR=$(node -e "process.stdout.write(String(process.versions.node.split('.')[0]))" 2>/dev/null || echo "0")
+    if [ "$NODE_MAJOR" -ge 18 ]; then
+      _ok "Node.js $(node --version)"
+    else
+      _fail "Node.js version too old: $(node --version) — need v18+"
+    fi
+  else
+    # Check common install paths (e.g. when PATH is stripped in a service env)
+    for candidate in /usr/local/bin/node /opt/homebrew/bin/node /usr/bin/node "$HOME/.nvm/versions/node/"*/bin/node; do
+      if [ -x "$candidate" ]; then
+        NODE_BIN="$candidate"
+        break
+      fi
+    done
+    if [ -n "$NODE_BIN" ]; then
+      _ok "Node.js found at $NODE_BIN (not in current PATH — this may cause issues)"
+    else
+      _fail "Node.js not found — install from https://nodejs.org and re-run"
+    fi
+  fi
+
+  # ── 2. OpenClaw config ────────────────────────────────────────────────────────
+  if [ ! -f "$OC_CONFIG" ]; then
+    _fail "OpenClaw config not found at $OC_CONFIG"
     echo ""
+    echo "  OpenClaw must be installed and configured before Forked can run."
+    echo "  Run: openclaw configure"
+    echo ""
+    echo "  ─────────────────────────────────────────────"
+    echo "  1 issue could not be auto-fixed."
+    echo ""
+    return 1
+  fi
+  _ok "OpenClaw config found"
+
+  # ── 3. Plugin registration ────────────────────────────────────────────────────
+  PLUGIN_STATUS=$(node -e "
+    try {
+      var fs = require('fs');
+      var cfg = JSON.parse(fs.readFileSync('$OC_CONFIG', 'utf-8'));
+      var paths = (cfg && cfg.plugins && cfg.plugins.load && cfg.plugins.load.paths) || [];
+      var enabled = !!(cfg && cfg.plugins && cfg.plugins.entries &&
+                       cfg.plugins.entries['forked-tracer'] &&
+                       cfg.plugins.entries['forked-tracer'].enabled === true);
+      var hasPath = paths.some(function(p) { return p.includes('forked-tracer'); });
+      process.stdout.write(hasPath && enabled ? 'ok' : 'fail');
+    } catch(e) { process.stdout.write('fail'); }
+  " 2>/dev/null || echo "fail")
+
+  if [ "$PLUGIN_STATUS" = "ok" ]; then
+    _ok "Forked tracer registered in OpenClaw config"
+  else
+    _fail "Forked tracer not registered or not enabled"
+    TRACER_PATH="$SCRIPT_DIR/forked-tracer"
+    if node -e "
+      var fs = require('fs');
+      var configPath = '$OC_CONFIG';
+      var tracerPath = '$TRACER_PATH';
+      var config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      config.plugins = config.plugins || {};
+      config.plugins.load = config.plugins.load || {};
+      config.plugins.load.paths = config.plugins.load.paths || [];
+      config.plugins.load.paths = config.plugins.load.paths
+        .filter(function(p) { return !p.includes('forked-tracer'); })
+        .concat(tracerPath);
+      config.plugins.entries = config.plugins.entries || {};
+      config.plugins.entries['forked-tracer'] = config.plugins.entries['forked-tracer'] || {};
+      config.plugins.entries['forked-tracer'].enabled = true;
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 4) + '\n');
+    " 2>/dev/null; then
+      _fixed "Forked tracer registered in OpenClaw config"
+      GATEWAY_NEEDS_RESTART=true
+    else
+      _warn "Could not update OpenClaw config — check file permissions on $OC_CONFIG"
+    fi
+  fi
+
+  # ── 4. Tracer dependencies ────────────────────────────────────────────────────
+  if [ -d "$SCRIPT_DIR/forked-tracer/node_modules" ]; then
+    _ok "Tracer dependencies installed"
+  else
+    _fail "Tracer dependencies missing"
+    if (cd "$SCRIPT_DIR/forked-tracer" && npm install --silent 2>&1 | grep -v "^npm warn" | grep -v "^$" || true) \
+       && [ -d "$SCRIPT_DIR/forked-tracer/node_modules" ]; then
+      _fixed "Tracer dependencies installed"
+    else
+      _warn "npm install failed for tracer — run manually: cd $SCRIPT_DIR/forked-tracer && npm install"
+    fi
+  fi
+
+  # ── 5. Daemon dependencies ────────────────────────────────────────────────────
+  if [ -d "$SCRIPT_DIR/forked-daemon/node_modules" ]; then
+    _ok "Daemon dependencies installed"
+  else
+    _fail "Daemon dependencies missing"
+    if (cd "$SCRIPT_DIR/forked-daemon" && npm install --silent 2>&1 | grep -v "^npm warn" | grep -v "^$" || true) \
+       && [ -d "$SCRIPT_DIR/forked-daemon/node_modules" ]; then
+      _fixed "Daemon dependencies installed"
+    else
+      _warn "npm install failed for daemon — run manually: cd $SCRIPT_DIR/forked-daemon && npm install"
+    fi
+  fi
+
+  # ── 6. Daemon health ──────────────────────────────────────────────────────────
+  if curl -sf http://127.0.0.1:8000/api/health > /dev/null 2>&1; then
+    _ok "Daemon is running (port 8000)"
+  else
+    _fail "Daemon is not running"
+    DAEMON_WAS_DOWN=true
+
+    # Start the daemon directly as an immediate fix
+    if [ -n "$NODE_BIN" ] && [ -f "$SCRIPT_DIR/forked-daemon/index.js" ]; then
+      _info "Starting daemon now..."
+      nohup "$NODE_BIN" "$SCRIPT_DIR/forked-daemon/index.js" >> /tmp/forked-daemon.log 2>&1 &
+      DAEMON_PID=$!
+      disown "$DAEMON_PID" 2>/dev/null || true
+      sleep 2
+      if curl -sf http://127.0.0.1:8000/api/health > /dev/null 2>&1; then
+        _fixed "Daemon started (pid $DAEMON_PID)"
+      else
+        _warn "Daemon did not respond after start attempt"
+        _warn "Check logs: cat /tmp/forked-daemon.log"
+      fi
+    else
+      _warn "Cannot start daemon: node binary not found"
+    fi
+  fi
+
+  # ── 7. Jiti cache + gateway restart ──────────────────────────────────────────
+  # If the daemon was down or the plugin config was wrong, the gateway is serving
+  # a stale version of the tracer. Clear the jiti cache and restart so it loads
+  # fresh — this ensures the daemon auto-starts on every future gateway start.
+  if [ "$DAEMON_WAS_DOWN" = true ] || [ "$GATEWAY_NEEDS_RESTART" = true ]; then
+    echo ""
+    _info "Clearing jiti cache (stale plugin code)..."
+    rm -rf /var/folders/*/T/jiti /var/folders/*/T/node-jiti 2>/dev/null || true
+
+    if command -v openclaw &>/dev/null; then
+      _info "Restarting OpenClaw gateway to reload the tracer..."
+      openclaw gateway stop 2>/dev/null || true
+      sleep 1
+      openclaw gateway start 2>/dev/null || true
+      sleep 3
+      if curl -sf http://127.0.0.1:8000/api/health > /dev/null 2>&1; then
+        _info "Daemon confirmed running after gateway restart"
+      elif [ "$DAEMON_WAS_DOWN" = false ]; then
+        # Daemon was running before, gateway restart may have stopped it briefly — it should come back
+        _info "Daemon will be started by the tracer as gateway finishes loading"
+      else
+        _warn "Daemon not responding after gateway restart"
+        _warn "The gateway may take a few more seconds to finish loading the tracer"
+      fi
+    else
+      _warn "openclaw not found in PATH — restart the gateway manually:"
+      _warn "  openclaw gateway stop && openclaw gateway start"
+    fi
+  fi
+
+  # ── Summary ───────────────────────────────────────────────────────────────────
+  echo ""
+  echo "  ─────────────────────────────────────────────"
+  if [ "$ISSUES" -le 0 ]; then
+    echo "  Everything looks good. Forked is running correctly."
+  else
+    echo "  $ISSUES issue(s) could not be auto-fixed — see [!] items above."
+  fi
+  echo ""
+}
+
+# ── run ui ─────────────────────────────────────────────────────────────────────
+
+if [[ "$command" == "run" && "$subcommand" == "ui" ]]; then
+  if ! curl -sf http://127.0.0.1:8000/api/health > /dev/null 2>&1; then
+    echo "[forked] Daemon is not running — running audit to fix..."
+    echo ""
+    run_audit
+    echo ""
+    # Final check before launching UI
+    if ! curl -sf http://127.0.0.1:8000/api/health > /dev/null 2>&1; then
+      echo "[forked] Warning: daemon still not responding. The UI will show 'Offline'."
+      echo "         If the issue persists, run: forked audit"
+      echo ""
+    fi
   fi
 
   echo "[forked] Starting Forked UI..."
   cd "$SCRIPT_DIR/forked-ui"
   exec npm run dev
+
+# ── audit ──────────────────────────────────────────────────────────────────────
+
+elif [[ "$command" == "audit" ]]; then
+  run_audit
+
+# ── update ─────────────────────────────────────────────────────────────────────
 
 elif [[ "$command" == "update" ]]; then
   if ! command -v git &>/dev/null; then
@@ -53,11 +261,10 @@ elif [[ "$command" == "update" ]]; then
   (cd "$SCRIPT_DIR/forked-ui"      && npm install --silent 2>&1 | grep -v "^npm warn" | grep -v "^$" || true)
 
   echo ""
-  echo "[forked] Update complete!"
-  echo ""
-  echo "  Restart your OpenClaw gateway to pick up any tracer changes:"
-  echo "    openclaw gateway stop && openclaw gateway start"
-  echo ""
+  echo "[forked] Checking everything is running correctly..."
+  run_audit
+
+# ── uninstall ──────────────────────────────────────────────────────────────────
 
 elif [[ "$command" == "uninstall" ]]; then
   exec "$SCRIPT_DIR/uninstall.sh"

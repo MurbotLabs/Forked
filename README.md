@@ -91,9 +91,23 @@ forked run ui
 
 This starts the Vite dev server and keeps it tied to your terminal — closing the terminal (or pressing `Ctrl+C`) stops the UI. Open your browser to the URL shown (typically `http://localhost:5173`).
 
+If the daemon isn't running when you launch the UI, it will automatically run `forked audit` to fix the issue before opening.
+
 ### 3. Run your agents normally
 
 Use OpenClaw as you always would. Traces appear in the UI in real time.
+
+---
+
+## Troubleshooting (quick fix)
+
+If anything isn't working — daemon not starting, UI showing "Offline", traces not appearing — run:
+
+```bash
+forked audit
+```
+
+This checks your entire Forked setup and auto-fixes whatever it can: re-registers the plugin, installs missing dependencies, starts the daemon, clears stale plugin cache, and restarts the gateway. No manual steps needed.
 
 ---
 
@@ -185,7 +199,7 @@ All communication is **localhost-only**. Nothing is exposed to the network.
 
 ---
 
-## Troubleshooting
+## Troubleshooting (detailed)
 
 ### `forked: command not found`
 
@@ -213,13 +227,15 @@ Re-running `./install.sh` will also fix this automatically.
 
 ### UI shows "Offline"
 
-The daemon is not running. Make sure your OpenClaw gateway is running — the daemon starts automatically when the gateway loads. Check that the tracer is enabled:
+Run `forked audit` — it will diagnose and fix the issue automatically.
+
+If you want to check manually, the daemon is not running. Make sure your OpenClaw gateway is running — the daemon starts automatically when the gateway loads. Check that the tracer is enabled:
 
 ```bash
 cat ~/.openclaw/openclaw.json | grep -A5 '"forked-tracer"'
 ```
 
-Should show `"enabled": true`. If not, re-run `./install.sh`.
+Should show `"enabled": true`. If not, run `forked audit` or re-run `./install.sh`.
 
 ---
 

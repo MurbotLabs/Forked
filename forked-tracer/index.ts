@@ -10,7 +10,7 @@ import { fileURLToPath } from "url";
 const DAEMON_SCRIPT = (() => {
     try {
         const thisDir = path.dirname(fileURLToPath(import.meta.url));
-        return path.resolve(thisDir, "../../../forked-daemon/index.js");
+        return path.resolve(thisDir, "../forked-daemon/index.js");
     } catch {
         return path.resolve(process.cwd(), "forked-daemon/index.js");
     }
@@ -120,8 +120,11 @@ function isDaemonRunning(): Promise<boolean> {
 }
 
 function spawnDaemon(logger: TracerLogger) {
-    logger.info?.(`[Forked Tracer] Spawning daemon: node ${DAEMON_SCRIPT}`);
-    const proc = spawn("node", [DAEMON_SCRIPT], {
+    // Use process.execPath so the same Node.js binary that runs the gateway also
+    // runs the daemon — this works even when the gateway runs as a launchctl
+    // service where "node" may not be in PATH.
+    logger.info?.(`[Forked Tracer] Spawning daemon: ${process.execPath} ${DAEMON_SCRIPT}`);
+    const proc = spawn(process.execPath, [DAEMON_SCRIPT], {
         detached: true,
         stdio: "ignore",
     });
@@ -133,11 +136,14 @@ async function ensureDaemonRunning(logger: TracerLogger) {
     const running = await isDaemonRunning();
     if (running) {
         logger.info?.("[Forked Tracer] Daemon already running, connecting...");
+        connect(logger);
     } else {
         logger.info?.("[Forked Tracer] Daemon not running, starting it...");
         spawnDaemon(logger);
+        // Give the daemon a moment to start before the first connection attempt.
+        await new Promise<void>((resolve) => setTimeout(resolve, 1500));
+        connect(logger);
     }
-    connect(logger);
 }
 
 function connect(logger: TracerLogger) {

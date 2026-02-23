@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 @theme {
+  /* ── Dark-mode default palette ── */
   --color-surface-0: #050508;
   --color-surface-1: #0a0a10;
   --color-surface-2: #10101c;
@@ -21,6 +22,72 @@
   --color-terminal-green-dim: #00cc6a;
   --color-terminal-amber: #ffb000;
   --color-terminal-cyan: #00e5ff;
+}
+
+/* ── Dark-mode retro card/input variables ── */
+:root {
+  --retro-card-bg-from: #0d0d18;
+  --retro-card-bg-to: #0a0a12;
+  --retro-card-inset: rgba(255, 255, 255, 0.02);
+  --retro-card-hover-border: #2a2a50;
+  --input-bg: #08080e;
+  --input-text: var(--color-terminal-green);
+  --input-placeholder: #2a2a45;
+  --scrollbar-thumb-color: #1a1a30;
+  --scrollbar-thumb-hover-color: #33335c;
+}
+
+/* ══════════════════════════════════════════
+   LIGHT MODE OVERRIDES
+   Applied when html.light class is present
+   ══════════════════════════════════════════ */
+
+html.light {
+  /* Surfaces — clean blue-white */
+  --color-surface-0: #f7f8fd;
+  --color-surface-1: #eef1fa;
+  --color-surface-2: #e4e8f5;
+  --color-surface-3: #d8ddf0;
+  --color-surface-4: #ced4ea;
+  --color-surface-hover: #eaecf8;
+
+  /* Borders */
+  --color-border-default: #ccd1e8;
+  --color-border-subtle: #dce1f2;
+  --color-border-active: #868fc0;
+
+  /* Terminal semantic colors — darker for readability on light bg */
+  --color-terminal-green: #0a7a42;
+  --color-terminal-green-dim: #0a6035;
+  --color-terminal-amber: #a86800;
+  --color-terminal-cyan: #006d99;
+
+  /* Slate hierarchy flip:
+     In dark mode slate-300=light text, slate-800=barely visible.
+     In light mode we invert so dimmer numbers stay visually dim. */
+  --color-slate-300: #3a4265;
+  --color-slate-400: #525a82;
+  --color-slate-500: #6e77a0;
+  --color-slate-600: #9aa2c2;
+  --color-slate-700: #c2c9e0;
+  --color-slate-800: #dae0f2;
+
+  /* Retro card/input vars */
+  --retro-card-bg-from: #f4f6fe;
+  --retro-card-bg-to: #eff2fc;
+  --retro-card-inset: rgba(255, 255, 255, 0.85);
+  --retro-card-hover-border: #b8c0dc;
+  --input-bg: #ffffff;
+  --input-text: #3a4265;
+  --input-placeholder: #9aa2c2;
+  --scrollbar-thumb-color: #ccd1e8;
+  --scrollbar-thumb-hover-color: #868fc0;
+}
+
+/* Light-mode body text / bg */
+html.light body {
+  background-color: var(--color-surface-0);
+  color: #3a4265;
 }
 
 @font-face {
@@ -53,12 +120,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1a1a30;
+  background: var(--scrollbar-thumb-color);
   border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #33335c;
+  background: var(--scrollbar-thumb-hover-color);
 }
 
 /* ══════════════════════════════════════════
@@ -119,7 +186,7 @@ body {
 
 /* Terminal-style border effect */
 .terminal-border {
-  border: 1px solid #1a1a30;
+  border: 1px solid var(--color-border-default);
   box-shadow:
     inset 0 0 30px rgba(0, 0, 0, 0.3),
     0 0 1px rgba(99, 102, 241, 0.15);
@@ -127,20 +194,20 @@ body {
 
 /* Retro card — slight rounded corners, glow border */
 .retro-card {
-  background: linear-gradient(180deg, #0d0d18 0%, #0a0a12 100%);
-  border: 1px solid #1a1a30;
+  background: linear-gradient(180deg, var(--retro-card-bg-from) 0%, var(--retro-card-bg-to) 100%);
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
   box-shadow:
     0 0 1px rgba(99, 102, 241, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.02);
+    inset 0 1px 0 var(--retro-card-inset);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .retro-card:hover {
-  border-color: #2a2a50;
+  border-color: var(--retro-card-hover-border);
   box-shadow:
     0 0 8px rgba(99, 102, 241, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    inset 0 1px 0 var(--retro-card-inset);
 }
 
 .retro-card-selected {
@@ -212,9 +279,9 @@ body {
 
 /* Retro input — terminal-style inputs */
 .retro-input {
-  background: #08080e;
-  border: 1px solid #1a1a30;
-  color: var(--color-terminal-green);
+  background: var(--input-bg);
+  border: 1px solid var(--color-border-default);
+  color: var(--input-text);
   font-family: inherit;
   border-radius: 4px;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -226,8 +293,13 @@ body {
   box-shadow: 0 0 8px rgba(0, 255, 136, 0.08);
 }
 
+html.light .retro-input:focus {
+  border-color: rgba(99, 102, 241, 0.35);
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.1);
+}
+
 .retro-input::placeholder {
-  color: #2a2a45;
+  color: var(--input-placeholder);
 }
 
 /* Retro button base */
@@ -262,6 +334,46 @@ body {
 
 /* Divider with retro terminal feel */
 .retro-divider {
-  border-color: #1a1a30;
+  border-color: var(--color-border-default);
   border-style: dashed;
+}
+
+/* ══════════════════════════════════════════
+   LIGHT MODE — SUPPRESS RETRO EFFECTS
+   ══════════════════════════════════════════ */
+
+html.light .scanlines-full::after {
+  display: none;
+}
+
+html.light .scanlines {
+  display: none;
+}
+
+html.light .crt-glow {
+  text-shadow: none;
+}
+
+html.light .crt-glow-green {
+  box-shadow: none;
+}
+
+html.light .crt-glow-amber {
+  text-shadow: none;
+}
+
+html.light .noise-bg::before {
+  display: none;
+}
+
+html.light .grid-bg {
+  background-image:
+    linear-gradient(rgba(99, 102, 241, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99, 102, 241, 0.035) 1px, transparent 1px);
+}
+
+html.light .terminal-border {
+  box-shadow:
+    inset 0 0 20px rgba(0, 0, 0, 0.02),
+    0 0 1px rgba(99, 102, 241, 0.08);
 }

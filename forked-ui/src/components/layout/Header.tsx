@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Sun, Moon } from "lucide-react";
 import { fetchConfig } from "../../lib/api";
 
 type Props = {
   onRefresh: () => void;
   isConnected?: boolean;
+  isDark: boolean;
+  onToggleTheme: () => void;
 };
 
 const ASCII_LOGO = `
@@ -15,7 +17,7 @@ const ASCII_LOGO = `
 ██║     ╚██████╔╝██║  ██║██║  ██╗███████╗██████╔╝
 ╚═╝      ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═════╝`.trim();
 
-export function Header({ onRefresh, isConnected = true }: Props) {
+export function Header({ onRefresh, isConnected = true, isDark, onToggleTheme }: Props) {
   const [retention, setRetention] = useState<number | "never" | null>(null);
 
   useEffect(() => {
@@ -88,6 +90,15 @@ export function Header({ onRefresh, isConnected = true }: Props) {
               </>
             )}
           </div>
+
+          {/* Theme toggle */}
+          <button
+            onClick={onToggleTheme}
+            className="text-slate-600 hover:text-accent p-1.5 rounded transition-all duration-150 cursor-pointer retro-card hover:border-accent/20"
+            title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            {isDark ? <Sun size={13} /> : <Moon size={13} />}
+          </button>
 
           <button
             onClick={onRefresh}

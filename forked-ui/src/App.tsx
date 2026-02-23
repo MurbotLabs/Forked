@@ -8,11 +8,30 @@ import { ConfigPanel } from "./components/config/ConfigPanel";
 
 type Tab = "traces" | "config";
 
+const THEME_KEY = "forked.theme";
+
 function App() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [connected, setConnected] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("traces");
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    const stored = localStorage.getItem(THEME_KEY);
+    return stored !== "light";
+  });
+
+  // Apply/remove the .light class on <html>
+  useEffect(() => {
+    const root = document.documentElement;
+    if (isDark) {
+      root.classList.remove("light");
+    } else {
+      root.classList.add("light");
+    }
+    localStorage.setItem(THEME_KEY, isDark ? "dark" : "light");
+  }, [isDark]);
+
+  const toggleTheme = useCallback(() => setIsDark((prev) => !prev), []);
 
   const refreshSessions = useCallback(() => {
     fetchSessions()
@@ -44,7 +63,7 @@ function App() {
 
   return (
     <div className="bg-surface-0 text-slate-300 min-h-screen flex flex-col scanlines-full relative">
-      <Header onRefresh={refreshSessions} isConnected={connected} />
+      <Header onRefresh={refreshSessions} isConnected={connected} isDark={isDark} onToggleTheme={toggleTheme} />
 
       {/* Tab bar */}
       <div className="flex items-center border-b border-border-default bg-surface-1 shrink-0 px-4">
